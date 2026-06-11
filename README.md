@@ -13,8 +13,9 @@ No server, build step, or internet connection is required.
 
 ## Features
 
-- Responsive calendar and agenda month views with previous/next/today controls.
-- Calendar day cells show only the number of entries and total hours; click a day to see entry details.
+- Auto, Calendar, and Agenda month view options with previous/next/today controls.
+- Auto uses calendar on wider windows and agenda on smaller windows.
+- Calendar day cells show only the number of entries and total hours; blank days do not show filler text.
 - Click a day, then click **Add new entry** or **Edit** to show the entry form:
   - Check in time in 24-hour format.
   - Check out time in 24-hour format.

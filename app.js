@@ -5,6 +5,7 @@
   var DEFAULT_DATA_FILE_NAME = "timesheet-data.json";
   var NEW_PROJECT_VALUE = "__new_project__";
   var DEFAULT_PROJECT = "General";
+  var VIEW_AUTO = "auto";
   var VIEW_CALENDAR = "calendar";
   var VIEW_AGENDA = "agenda";
   var weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -23,7 +24,8 @@
 
   var state = {
     viewedDate: startOfMonth(new Date()),
-    viewMode: getResponsiveViewMode(),
+    viewPreference: VIEW_AUTO,
+    viewMode: getSelectedViewMode(VIEW_AUTO),
     entries: {},
     projects: normalizeProjects([], {}),
     dataFileHandle: null,
@@ -41,6 +43,9 @@
     previousMonthButton: document.getElementById("previousMonthButton"),
     nextMonthButton: document.getElementById("nextMonthButton"),
     todayButton: document.getElementById("todayButton"),
+    autoViewButton: document.getElementById("autoViewButton"),
+    calendarViewButton: document.getElementById("calendarViewButton"),
+    agendaViewButton: document.getElementById("agendaViewButton"),
     viewModeNote: document.getElementById("viewModeNote"),
     dataFileStatus: document.getElementById("dataFileStatus"),
     openDataFileButton: document.getElementById("openDataFileButton"),
@@ -106,6 +111,18 @@
     elements.todayButton.addEventListener("click", function () {
       state.viewedDate = startOfMonth(new Date());
       renderMainView();
+    });
+
+    elements.autoViewButton.addEventListener("click", function () {
+      setViewPreference(VIEW_AUTO);
+    });
+
+    elements.calendarViewButton.addEventListener("click", function () {
+      setViewPreference(VIEW_CALENDAR);
+    });
+
+    elements.agendaViewButton.addEventListener("click", function () {
+      setViewPreference(VIEW_AGENDA);
     });
 
     elements.openDataFileButton.addEventListener("click", openDataFile);
@@ -379,12 +396,26 @@
   }
 
   function syncResponsiveViewMode() {
-    var nextViewMode = getResponsiveViewMode();
-
-    if (state.viewMode !== nextViewMode) {
-      state.viewMode = nextViewMode;
-      renderMainView();
+    if (state.viewPreference !== VIEW_AUTO) {
+      return;
     }
+
+    setViewMode(getResponsiveViewMode());
+  }
+
+  function setViewPreference(viewPreference) {
+    state.viewPreference = viewPreference;
+    setViewMode(getSelectedViewMode(viewPreference));
+  }
+
+  function setViewMode(nextViewMode) {
+    if (state.viewMode === nextViewMode) {
+      renderViewControls();
+      return;
+    }
+
+    state.viewMode = nextViewMode;
+    renderMainView();
   }
 
   function getResponsiveViewMode() {
@@ -393,6 +424,14 @@
     }
 
     return VIEW_CALENDAR;
+  }
+
+  function getSelectedViewMode(viewPreference) {
+    if (viewPreference === VIEW_CALENDAR || viewPreference === VIEW_AGENDA) {
+      return viewPreference;
+    }
+
+    return getResponsiveViewMode();
   }
 
   function renderMainView() {
@@ -407,14 +446,28 @@
     elements.monthSummary.textContent = monthlyEntries.length + " " + pluralize("entry", monthlyEntries.length) + " · " + formatHours(monthlyHours) + " hours";
     elements.calendarView.classList.toggle("hidden", state.viewMode !== VIEW_CALENDAR);
     elements.agendaView.classList.toggle("hidden", state.viewMode !== VIEW_AGENDA);
-    elements.viewModeNote.textContent = state.viewMode === VIEW_CALENDAR
-      ? "Calendar view is active for this window size."
-      : "Agenda view is active for this window size.";
+    renderViewControls();
 
     if (state.viewMode === VIEW_CALENDAR) {
       renderCalendar();
     } else {
       renderAgenda();
+    }
+  }
+
+  function renderViewControls() {
+    elements.autoViewButton.classList.toggle("is-active", state.viewPreference === VIEW_AUTO);
+    elements.calendarViewButton.classList.toggle("is-active", state.viewPreference === VIEW_CALENDAR);
+    elements.agendaViewButton.classList.toggle("is-active", state.viewPreference === VIEW_AGENDA);
+
+    if (state.viewPreference === VIEW_AUTO) {
+      elements.viewModeNote.textContent = state.viewMode === VIEW_CALENDAR
+        ? "Auto: calendar view for this window size."
+        : "Auto: agenda view for this window size.";
+    } else {
+      elements.viewModeNote.textContent = state.viewMode === VIEW_CALENDAR
+        ? "Calendar view selected."
+        : "Agenda view selected.";
     }
   }
 
@@ -465,7 +518,7 @@
 
   function renderDayPreview(entries) {
     if (entries.length === 0) {
-      return '<div class="entry-preview">No entry yet</div>';
+      return "";
     }
 
     return (
@@ -516,7 +569,7 @@
             return escapeHtml(entry.checkIn) + " - " + escapeHtml(entry.checkOut) + " · " + escapeHtml(entry.project);
           }).join("<br>");
       } else {
-        details.textContent = "No entry yet";
+        details.textContent = "";
       }
 
       openButton.className = "secondary-button compact-button";
