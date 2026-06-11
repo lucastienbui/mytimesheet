@@ -28,10 +28,7 @@
         </div>
         <div class="toolbar-actions">
           <button class="secondary-button" id="todayButton" type="button">Today</button>
-          <div class="view-toggle" aria-label="Timesheet view">
-            <button class="toggle-button is-active" id="calendarViewButton" type="button">Calendar</button>
-            <button class="toggle-button" id="agendaViewButton" type="button">Agenda</button>
-          </div>
+          <p class="view-mode-note" id="viewModeNote"></p>
         </div>
 
         <section id="calendarView">
@@ -44,7 +41,8 @@
       <section class="help-card" aria-label="Usage notes">
         <h2>How it works</h2>
         <ul>
-          <li>Switch between calendar and agenda views for the same monthly records.</li>
+          <li>The app automatically uses calendar view on wider screens and agenda view on smaller screens.</li>
+          <li>Calendar days show only entry count and total hours; click a day to see details.</li>
           <li>Click a day to add several check in, check out, and project entries.</li>
           <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
           <li>Use Report to see project totals for a period and export the detailed CSV.</li>

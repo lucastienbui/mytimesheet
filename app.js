@@ -24,7 +24,7 @@
   var storedEntries = loadEntries();
   var state = {
     viewedDate: startOfMonth(new Date()),
-    viewMode: VIEW_CALENDAR,
+    viewMode: getResponsiveViewMode(),
     entries: storedEntries,
     projects: loadProjects(storedEntries)
   };
@@ -39,8 +39,7 @@
     previousMonthButton: document.getElementById("previousMonthButton"),
     nextMonthButton: document.getElementById("nextMonthButton"),
     todayButton: document.getElementById("todayButton"),
-    calendarViewButton: document.getElementById("calendarViewButton"),
-    agendaViewButton: document.getElementById("agendaViewButton"),
+    viewModeNote: document.getElementById("viewModeNote"),
     openReportButton: document.getElementById("openReportButton"),
     entryDialog: document.getElementById("entryDialog"),
     entryForm: document.getElementById("entryForm"),
@@ -81,6 +80,7 @@
     renderWeekdays();
     renderMainView();
     bindEvents();
+    bindResponsiveViewMode();
   }
 
   function bindEvents() {
@@ -97,14 +97,6 @@
     elements.todayButton.addEventListener("click", function () {
       state.viewedDate = startOfMonth(new Date());
       renderMainView();
-    });
-
-    elements.calendarViewButton.addEventListener("click", function () {
-      setViewMode(VIEW_CALENDAR);
-    });
-
-    elements.agendaViewButton.addEventListener("click", function () {
-      setViewMode(VIEW_AGENDA);
     });
 
     elements.openReportButton.addEventListener("click", openReportDialog);
@@ -149,9 +141,39 @@
     });
   }
 
-  function setViewMode(viewMode) {
-    state.viewMode = viewMode;
-    renderMainView();
+  function bindResponsiveViewMode() {
+    var mediaQuery;
+
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    mediaQuery = window.matchMedia("(max-width: 760px)");
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncResponsiveViewMode);
+    } else if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(syncResponsiveViewMode);
+    }
+
+    syncResponsiveViewMode();
+  }
+
+  function syncResponsiveViewMode() {
+    var nextViewMode = getResponsiveViewMode();
+
+    if (state.viewMode !== nextViewMode) {
+      state.viewMode = nextViewMode;
+      renderMainView();
+    }
+  }
+
+  function getResponsiveViewMode() {
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches) {
+      return VIEW_AGENDA;
+    }
+
+    return VIEW_CALENDAR;
   }
 
   function renderMainView() {
@@ -166,8 +188,9 @@
     elements.monthSummary.textContent = monthlyEntries.length + " " + pluralize("entry", monthlyEntries.length) + " · " + formatHours(monthlyHours) + " hours";
     elements.calendarView.classList.toggle("hidden", state.viewMode !== VIEW_CALENDAR);
     elements.agendaView.classList.toggle("hidden", state.viewMode !== VIEW_AGENDA);
-    elements.calendarViewButton.classList.toggle("is-active", state.viewMode === VIEW_CALENDAR);
-    elements.agendaViewButton.classList.toggle("is-active", state.viewMode === VIEW_AGENDA);
+    elements.viewModeNote.textContent = state.viewMode === VIEW_CALENDAR
+      ? "Calendar view is active for this window size."
+      : "Agenda view is active for this window size.";
 
     if (state.viewMode === VIEW_CALENDAR) {
       renderCalendar();
@@ -222,11 +245,6 @@
   }
 
   function renderDayPreview(entries) {
-    var previewEntries = entries.slice(0, 2).map(function (entry) {
-      return escapeHtml(entry.checkIn) + " - " + escapeHtml(entry.checkOut) + " · " + escapeHtml(entry.project);
-    });
-    var extraCount = entries.length - previewEntries.length;
-
     if (entries.length === 0) {
       return '<div class="entry-preview">No entry yet</div>';
     }
@@ -239,9 +257,7 @@
       pluralize("entry", entries.length) +
       " · " +
       formatHours(sumHours(entries)) +
-      " hours</span><br>" +
-      previewEntries.join("<br>") +
-      (extraCount > 0 ? "<br>+" + extraCount + " more" : "") +
+      " hours</span>" +
       "</div>"
     );
   }

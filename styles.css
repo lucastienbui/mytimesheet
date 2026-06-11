@@ -131,27 +131,11 @@ small {
   margin: 12px 0 20px;
 }
 
-.view-toggle {
-  display: inline-flex;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: #f8fafc;
-}
-
-.toggle-button {
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
+.view-mode-note {
+  margin: 0;
   color: var(--muted);
-  font-weight: 800;
-  padding: 8px 14px;
-}
-
-.toggle-button.is-active {
-  background: var(--primary);
-  color: #ffffff;
-  box-shadow: 0 8px 18px rgba(36, 99, 235, 0.18);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .calendar-grid {
@@ -233,7 +217,6 @@ small {
 
 .entry-count {
   display: inline-block;
-  margin-bottom: 8px;
   color: var(--text);
   font-weight: 800;
 }
