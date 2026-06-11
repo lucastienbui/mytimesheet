@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+coverage/
+
+# SQLite database files (created at runtime)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs and env
+*.log
+.env
+.env.local
+.DS_Store

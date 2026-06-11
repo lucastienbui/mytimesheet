@@ -1,0 +1,29 @@
+{
+  "name": "mytimesheet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyTimesheet - a simple full-stack time tracking app",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev -w @mytimesheet/server",
+    "dev:client": "npm run dev -w @mytimesheet/client",
+    "build": "npm run build -w @mytimesheet/server && npm run build -w @mytimesheet/client",
+    "start": "npm run start -w @mytimesheet/server",
+    "lint": "npm run lint -w @mytimesheet/server && npm run lint -w @mytimesheet/client",
+    "test": "npm run test -w @mytimesheet/server && npm run test -w @mytimesheet/client"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.4.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "typescript-eslint": "^8.61.0"
+  }
+}
