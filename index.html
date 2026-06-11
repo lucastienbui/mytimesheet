@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local Timesheet Calendar</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Local timesheet</p>
+          <h1>Timesheet Calendar</h1>
+          <p class="subtitle">Track check in, check out, project, and hours on your own computer.</p>
+        </div>
+        <button class="primary-button" id="openExportButton" type="button">Export CSV</button>
+      </header>
+
+      <main class="calendar-card" aria-labelledby="calendarTitle">
+        <div class="calendar-toolbar">
+          <button class="icon-button" id="previousMonthButton" type="button" aria-label="Previous month">&lsaquo;</button>
+          <div class="calendar-title-group">
+            <h2 id="calendarTitle"></h2>
+            <p id="monthSummary" class="month-summary"></p>
+          </div>
+          <button class="icon-button" id="nextMonthButton" type="button" aria-label="Next month">&rsaquo;</button>
+        </div>
+        <div class="toolbar-actions">
+          <button class="secondary-button" id="todayButton" type="button">Today</button>
+        </div>
+
+        <section class="calendar-grid" id="calendarWeekdays" aria-hidden="true"></section>
+        <section class="calendar-grid calendar-days" id="calendarDays" aria-label="Calendar days"></section>
+      </main>
+
+      <section class="help-card" aria-label="Usage notes">
+        <h2>How it works</h2>
+        <ul>
+          <li>Click a day to add or edit your check in, check out, and project.</li>
+          <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
+          <li>Data is stored locally in this browser on this computer using HTML5 localStorage.</li>
+        </ul>
+      </section>
+    </div>
+
+    <dialog class="modal" id="entryDialog">
+      <form id="entryForm" method="dialog" class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Timesheet entry</p>
+            <h2 id="entryDialogTitle">Add entry</h2>
+          </div>
+          <button class="ghost-button" id="closeEntryButton" type="button" aria-label="Close entry dialog">&times;</button>
+        </div>
+
+        <input type="hidden" id="entryDate">
+
+        <label class="field">
+          <span>Check in <small>(24-hour format)</small></span>
+          <input id="checkInInput" type="time" required>
+        </label>
+
+        <label class="field">
+          <span>Check out <small>(24-hour format)</small></span>
+          <input id="checkOutInput" type="time" required>
+        </label>
+
+        <label class="field">
+          <span>Duration</span>
+          <input id="durationInput" type="text" readonly value="0.00 hours">
+        </label>
+
+        <label class="field">
+          <span>Project</span>
+          <select id="projectSelect" required></select>
+        </label>
+
+        <label class="field hidden" id="newProjectField">
+          <span>New project name</span>
+          <input id="newProjectInput" type="text" maxlength="80" placeholder="e.g. Website redesign">
+        </label>
+
+        <p class="form-message" id="entryMessage" role="status"></p>
+
+        <div class="modal-actions split-actions">
+          <button class="danger-button" id="deleteEntryButton" type="button">Delete entry</button>
+          <div>
+            <button class="secondary-button" id="cancelEntryButton" type="button">Cancel</button>
+            <button class="primary-button" type="submit">Save entry</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="exportDialog">
+      <form id="exportForm" method="dialog" class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Export</p>
+            <h2>Export timesheet to CSV</h2>
+          </div>
+          <button class="ghost-button" id="closeExportButton" type="button" aria-label="Close export dialog">&times;</button>
+        </div>
+
+        <div class="date-range">
+          <label class="field">
+            <span>Start date <small>(DD/MM/YYYY)</small></span>
+            <input id="exportStartInput" type="text" inputmode="numeric" placeholder="01/06/2026" required>
+          </label>
+          <label class="field">
+            <span>End date <small>(DD/MM/YYYY)</small></span>
+            <input id="exportEndInput" type="text" inputmode="numeric" placeholder="30/06/2026" required>
+          </label>
+        </div>
+
+        <fieldset class="project-filter">
+          <legend>Projects</legend>
+          <label class="checkbox-row">
+            <input id="allProjectsCheckbox" type="checkbox" checked>
+            <span>All projects</span>
+          </label>
+          <div id="projectCheckboxes" class="project-checkboxes"></div>
+        </fieldset>
+
+        <p class="form-message" id="exportMessage" role="status"></p>
+
+        <div class="modal-actions">
+          <button class="secondary-button" id="cancelExportButton" type="button">Cancel</button>
+          <button class="primary-button" type="submit">Download CSV</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
