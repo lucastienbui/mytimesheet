@@ -1011,7 +1011,15 @@
   }
 
   function pluralize(word, count) {
-    return count === 1 ? word : word + "s";
+    if (count === 1) {
+      return word;
+    }
+
+    if (/[^aeiou]y$/i.test(word)) {
+      return word.slice(0, -1) + "ies";
+    }
+
+    return word + "s";
   }
 
   function escapeCsvValue(value) {
