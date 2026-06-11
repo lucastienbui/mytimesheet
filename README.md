@@ -15,9 +15,10 @@ No server, build step, or internet connection is required.
 
 - Responsive calendar and agenda month views with previous/next/today controls.
 - Calendar day cells show only the number of entries and total hours; click a day to see entry details.
-- Click a day to add, edit, or delete several entries for that date:
+- Click a day, then click **Add new entry** or **Edit** to show the entry form:
   - Check in time in 24-hour format.
   - Check out time in 24-hour format.
+  - Time pickers use 5-minute increments.
   - Duration, calculated automatically in hours.
   - Project, selected from a dropdown or created from the entry dialog.
 - Report button on the main screen.

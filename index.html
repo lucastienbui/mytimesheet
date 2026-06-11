@@ -81,45 +81,47 @@
         <section class="day-entry-list" id="dayEntriesSection">
           <div class="section-heading">
             <h3>Entries for this day</h3>
-            <button class="secondary-button compact-button" id="newEntryButton" type="button">Add another entry</button>
+            <button class="secondary-button compact-button" id="newEntryButton" type="button">Add new entry</button>
           </div>
           <div id="dayEntriesList"></div>
         </section>
 
-        <label class="field">
-          <span>Check in <small>(24-hour format)</small></span>
-          <input id="checkInInput" type="time" required>
-        </label>
+        <section class="entry-editor hidden" id="entryEditor">
+          <label class="field">
+            <span>Check in <small>(24-hour format)</small></span>
+            <input id="checkInInput" type="time" step="300" required>
+          </label>
 
-        <label class="field">
-          <span>Check out <small>(24-hour format)</small></span>
-          <input id="checkOutInput" type="time" required>
-        </label>
+          <label class="field">
+            <span>Check out <small>(24-hour format)</small></span>
+            <input id="checkOutInput" type="time" step="300" required>
+          </label>
 
-        <label class="field">
-          <span>Duration</span>
-          <input id="durationInput" type="text" readonly value="0.00 hours">
-        </label>
+          <label class="field">
+            <span>Duration</span>
+            <input id="durationInput" type="text" readonly value="0.00 hours">
+          </label>
 
-        <label class="field">
-          <span>Project</span>
-          <select id="projectSelect" required></select>
-        </label>
+          <label class="field">
+            <span>Project</span>
+            <select id="projectSelect" required></select>
+          </label>
 
-        <label class="field hidden" id="newProjectField">
-          <span>New project name</span>
-          <input id="newProjectInput" type="text" maxlength="80" placeholder="e.g. Website redesign">
-        </label>
+          <label class="field hidden" id="newProjectField">
+            <span>New project name</span>
+            <input id="newProjectInput" type="text" maxlength="80" placeholder="e.g. Website redesign">
+          </label>
 
-        <p class="form-message" id="entryMessage" role="status"></p>
+          <p class="form-message" id="entryMessage" role="status"></p>
 
-        <div class="modal-actions split-actions">
-          <button class="danger-button" id="deleteEntryButton" type="button">Delete entry</button>
-          <div>
-            <button class="secondary-button" id="cancelEntryButton" type="button">Cancel</button>
-            <button class="primary-button" type="submit">Save entry</button>
+          <div class="modal-actions split-actions">
+            <button class="danger-button" id="deleteEntryButton" type="button">Delete entry</button>
+            <div>
+              <button class="secondary-button" id="cancelEntryButton" type="button">Cancel</button>
+              <button class="primary-button" type="submit">Save entry</button>
+            </div>
           </div>
-        </div>
+        </section>
       </form>
     </dialog>
 

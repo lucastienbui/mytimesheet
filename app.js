@@ -57,6 +57,7 @@
     newEntryButton: document.getElementById("newEntryButton"),
     dayEntriesSection: document.getElementById("dayEntriesSection"),
     dayEntriesList: document.getElementById("dayEntriesList"),
+    entryEditor: document.getElementById("entryEditor"),
     entryDate: document.getElementById("entryDate"),
     entryIndex: document.getElementById("entryIndex"),
     checkInInput: document.getElementById("checkInInput"),
@@ -114,11 +115,14 @@
 
     elements.openReportButton.addEventListener("click", openReportDialog);
     elements.closeEntryButton.addEventListener("click", closeEntryDialog);
-    elements.cancelEntryButton.addEventListener("click", closeEntryDialog);
+    elements.cancelEntryButton.addEventListener("click", function () {
+      showEntryListOnly(elements.entryDate.value);
+    });
     elements.closeExportButton.addEventListener("click", closeReportDialog);
     elements.cancelExportButton.addEventListener("click", closeReportDialog);
     elements.newEntryButton.addEventListener("click", function () {
       resetEntryForm(elements.entryDate.value);
+      elements.checkInInput.focus();
     });
 
     elements.checkInInput.addEventListener("input", updateDurationPreview);
@@ -517,7 +521,7 @@
 
       openButton.className = "secondary-button compact-button";
       openButton.type = "button";
-      openButton.textContent = entries.length > 0 ? "Open" : "Add";
+      openButton.textContent = "Open";
       openButton.addEventListener("click", openEntryDialog.bind(null, dateKey, null));
 
       row.appendChild(details);
@@ -532,17 +536,31 @@
     renderDayEntries(dateKey);
 
     if (entryIndex === null || entryIndex === undefined) {
-      resetEntryForm(dateKey);
+      showEntryListOnly(dateKey);
     } else {
       loadEntryIntoForm(dateKey, entryIndex);
     }
 
     showDialog(elements.entryDialog);
-    elements.checkInInput.focus();
+    if (entryIndex !== null && entryIndex !== undefined) {
+      elements.checkInInput.focus();
+    }
   }
 
   function closeEntryDialog() {
     elements.entryDialog.close();
+  }
+
+  function showEntryListOnly(dateKey) {
+    elements.entryForm.reset();
+    clearMessage(elements.entryMessage);
+    elements.entryDate.value = dateKey;
+    elements.entryIndex.value = "";
+    elements.entryDialogTitle.textContent = "Entries for " + formatDisplayDate(parseKey(dateKey));
+    elements.entryEditor.classList.add("hidden");
+    elements.newProjectField.classList.add("hidden");
+    elements.newProjectInput.required = false;
+    elements.deleteEntryButton.classList.add("hidden");
   }
 
   function resetEntryForm(dateKey) {
@@ -551,6 +569,7 @@
     elements.entryDate.value = dateKey;
     elements.entryIndex.value = "";
     elements.entryDialogTitle.textContent = "Add entry for " + formatDisplayDate(parseKey(dateKey));
+    elements.entryEditor.classList.remove("hidden");
     renderProjectOptions("");
     elements.deleteEntryButton.classList.add("hidden");
     updateDurationPreview();
@@ -570,6 +589,7 @@
     elements.entryDate.value = dateKey;
     elements.entryIndex.value = String(entryIndex);
     elements.entryDialogTitle.textContent = "Edit entry for " + formatDisplayDate(parseKey(dateKey));
+    elements.entryEditor.classList.remove("hidden");
     renderProjectOptions(entry.project);
     elements.checkInInput.value = entry.checkIn;
     elements.checkOutInput.value = entry.checkOut;
@@ -677,8 +697,7 @@
     }
     renderDayEntries(dateKey);
     renderMainView();
-    resetEntryForm(dateKey);
-    showMessage(elements.entryMessage, state.dataFileMode === "direct" ? "Entry saved to data file." : "Entry saved in memory. Download the data file to keep it.", false);
+    showEntryListOnly(dateKey);
   }
 
   function deleteSelectedEntry() {
@@ -714,8 +733,7 @@
     }
     renderDayEntries(dateKey);
     renderMainView();
-    resetEntryForm(dateKey);
-    showMessage(elements.entryMessage, state.dataFileMode === "direct" ? "Entry deleted from data file." : "Entry deleted in memory. Download the data file to keep it.", false);
+    showEntryListOnly(dateKey);
   }
 
   function renderProjectOptions(selectedProject) {

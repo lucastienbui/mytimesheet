@@ -439,6 +439,10 @@ small {
   gap: 8px;
 }
 
+.entry-editor {
+  padding-top: 4px;
+}
+
 .modal-header {
   align-items: flex-start;
   justify-content: space-between;
