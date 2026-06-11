@@ -46,7 +46,6 @@
     autoViewButton: document.getElementById("autoViewButton"),
     calendarViewButton: document.getElementById("calendarViewButton"),
     agendaViewButton: document.getElementById("agendaViewButton"),
-    viewModeNote: document.getElementById("viewModeNote"),
     dataFileStatus: document.getElementById("dataFileStatus"),
     openDataFileButton: document.getElementById("openDataFileButton"),
     createDataFileButton: document.getElementById("createDataFileButton"),
@@ -95,6 +94,7 @@
     renderMainView();
     bindEvents();
     bindResponsiveViewMode();
+    autoLoadDefaultDataFile();
   }
 
   function bindEvents() {
@@ -197,7 +197,7 @@
         return;
       }
 
-      await loadDataFromHandle(handles[0]);
+      await loadDataFromHandle(handles[0], true);
     } catch (error) {
       handleDataFileError(error, "Could not open the selected data file.");
     }
@@ -230,6 +230,7 @@
   async function importDataFile(event) {
     var file = event.target.files && event.target.files[0];
     var text;
+    var shouldCopyToDefault;
 
     if (!file) {
       return;
@@ -238,11 +239,24 @@
     try {
       text = await file.text();
       applyDataFileText(text);
+      renderAfterDataChange();
+
+      if (file.name && file.name !== DEFAULT_DATA_FILE_NAME) {
+        shouldCopyToDefault = confirmDefaultDataFileCopy(file.name);
+        if (shouldCopyToDefault) {
+          state.dataFileHandle = null;
+          state.dataFileName = DEFAULT_DATA_FILE_NAME;
+          state.dataFileMode = "download";
+          downloadDataFile(DEFAULT_DATA_FILE_NAME);
+          renderDataFileStatus("Imported " + file.name + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside index.html if needed.");
+          return;
+        }
+      }
+
       state.dataFileHandle = null;
       state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
       state.dataFileMode = "download";
       renderDataFileStatus("Imported " + state.dataFileName + ". Use Download data file after changes to save a new copy.");
-      renderAfterDataChange();
     } catch (error) {
       setDataFileStatus("Could not import that data file. Please choose a valid JSON data file.", true);
     } finally {
@@ -250,16 +264,93 @@
     }
   }
 
-  async function loadDataFromHandle(handle) {
+  async function loadDataFromHandle(handle, warnWhenNonDefault) {
     var file = await handle.getFile();
     var text = await file.text();
+    var shouldCopyToDefault;
 
     applyDataFileText(text);
+    renderAfterDataChange();
+
+    if (warnWhenNonDefault && file.name && file.name !== DEFAULT_DATA_FILE_NAME) {
+      shouldCopyToDefault = confirmDefaultDataFileCopy(file.name);
+      if (shouldCopyToDefault) {
+        try {
+          await saveCurrentDataAsDefaultFile(file.name);
+          return;
+        } catch (error) {
+          if (!error || error.name !== "AbortError") {
+            throw error;
+          }
+        }
+      }
+    }
+
     state.dataFileHandle = handle;
     state.dataFileName = handle.name || file.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
     renderDataFileStatus("Connected to " + state.dataFileName + ". Changes will save to this file.");
-    renderAfterDataChange();
+  }
+
+  async function autoLoadDefaultDataFile() {
+    var response;
+    var text;
+
+    if (typeof fetch !== "function") {
+      return;
+    }
+
+    try {
+      response = await fetch(DEFAULT_DATA_FILE_NAME, { cache: "no-store" });
+
+      if (!response.ok) {
+        return;
+      }
+
+      text = await response.text();
+      applyDataFileText(text);
+      state.dataFileHandle = null;
+      state.dataFileName = DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = "download";
+      renderDataFileStatus("Loaded " + DEFAULT_DATA_FILE_NAME + " from the app folder. Use Open data file to connect it for automatic saving, or Download data file after changes.");
+      renderAfterDataChange();
+    } catch (error) {
+      // Some browsers block fetch() for local file:// pages. The manual picker still works.
+    }
+  }
+
+  async function saveCurrentDataAsDefaultFile(sourceFileName) {
+    var handle;
+
+    if (!hasDirectFileAccess()) {
+      state.dataFileHandle = null;
+      state.dataFileName = DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = "download";
+      downloadDataFile(DEFAULT_DATA_FILE_NAME);
+      renderDataFileStatus("Imported " + sourceFileName + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside index.html if needed.");
+      return;
+    }
+
+    handle = await window.showSaveFilePicker({
+      suggestedName: DEFAULT_DATA_FILE_NAME,
+      types: [dataFilePickerType()]
+    });
+    state.dataFileHandle = handle;
+    state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "direct";
+    await writeDataFile();
+    renderDataFileStatus("Copied " + sourceFileName + " into " + state.dataFileName + ". Changes will save to this local file.");
+  }
+
+  function confirmDefaultDataFileCopy(sourceFileName) {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return false;
+    }
+
+    return window.confirm(
+      "You selected " + sourceFileName + ". This app normally uses " + DEFAULT_DATA_FILE_NAME + " in the app folder.\\n\\n" +
+      "Choose OK to copy/save this data as " + DEFAULT_DATA_FILE_NAME + ". Choose Cancel to keep using the selected file."
+    );
   }
 
   function applyDataFileText(text) {
@@ -307,13 +398,13 @@
     await writable.close();
   }
 
-  function downloadDataFile() {
+  function downloadDataFile(fileName) {
     var blob = new Blob([JSON.stringify(buildDataFilePayload(), null, 2)], { type: "application/json;charset=utf-8;" });
     var url = URL.createObjectURL(blob);
     var link = document.createElement("a");
 
     link.href = url;
-    link.download = state.dataFileName || DEFAULT_DATA_FILE_NAME;
+    link.download = fileName || state.dataFileName || DEFAULT_DATA_FILE_NAME;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -459,16 +550,6 @@
     elements.autoViewButton.classList.toggle("is-active", state.viewPreference === VIEW_AUTO);
     elements.calendarViewButton.classList.toggle("is-active", state.viewPreference === VIEW_CALENDAR);
     elements.agendaViewButton.classList.toggle("is-active", state.viewPreference === VIEW_AGENDA);
-
-    if (state.viewPreference === VIEW_AUTO) {
-      elements.viewModeNote.textContent = state.viewMode === VIEW_CALENDAR
-        ? "Auto: calendar view for this window size."
-        : "Auto: agenda view for this window size.";
-    } else {
-      elements.viewModeNote.textContent = state.viewMode === VIEW_CALENDAR
-        ? "Calendar view selected."
-        : "Agenda view selected.";
-    }
   }
 
   function renderCalendar() {

@@ -185,13 +185,6 @@ small {
   box-shadow: 0 8px 18px rgba(36, 99, 235, 0.18);
 }
 
-.view-mode-note {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
