@@ -17,6 +17,20 @@
         <button class="primary-button" id="openReportButton" type="button">Report</button>
       </header>
 
+      <section class="data-card" aria-label="Local data file">
+        <div>
+          <p class="eyebrow">Data file</p>
+          <h2>Save entries to a local JSON file</h2>
+          <p id="dataFileStatus" class="data-file-status">No data file connected. Open or create timesheet-data.json to save entries on this PC.</p>
+        </div>
+        <div class="data-actions">
+          <button class="secondary-button" id="openDataFileButton" type="button">Open data file</button>
+          <button class="secondary-button" id="createDataFileButton" type="button">Create data file</button>
+          <button class="secondary-button" id="downloadDataFileButton" type="button">Download data file</button>
+          <input class="hidden" id="dataFileInput" type="file" accept="application/json,.json">
+        </div>
+      </section>
+
       <main class="calendar-card" aria-labelledby="calendarTitle">
         <div class="calendar-toolbar">
           <button class="icon-button" id="previousMonthButton" type="button" aria-label="Previous month">&lsaquo;</button>
@@ -46,7 +60,7 @@
           <li>Click a day to add several check in, check out, and project entries.</li>
           <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
           <li>Use Report to see project totals for a period and export the detailed CSV.</li>
-          <li>Data is stored locally in this browser on this computer using HTML5 localStorage.</li>
+          <li>Data is stored in a local JSON file on your computer, not in browser site cache.</li>
         </ul>
       </section>
     </div>

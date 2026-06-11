@@ -85,6 +85,7 @@ small {
 }
 
 .calendar-card,
+.data-card,
 .help-card {
   border: 1px solid rgba(216, 224, 234, 0.8);
   border-radius: 28px;
@@ -94,6 +95,36 @@ small {
 
 .calendar-card {
   padding: 24px;
+}
+
+.data-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 22px 24px;
+}
+
+.data-card h2 {
+  margin-bottom: 8px;
+}
+
+.data-file-status {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.data-file-status.error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .help-card {
@@ -540,6 +571,7 @@ small {
 
 @media (max-width: 760px) {
   .app-header,
+  .data-card,
   .calendar-toolbar,
   .toolbar-actions,
   .split-actions,
@@ -554,6 +586,14 @@ small {
   }
 
   .icon-button {
+    width: 100%;
+  }
+
+  .data-actions {
+    justify-content: stretch;
+  }
+
+  .data-actions .secondary-button {
     width: 100%;
   }
 

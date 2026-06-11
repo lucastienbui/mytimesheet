@@ -1,8 +1,8 @@
 (function () {
   "use strict";
 
-  var ENTRY_STORAGE_KEY = "local-timesheet.entries.v1";
-  var PROJECT_STORAGE_KEY = "local-timesheet.projects.v1";
+  var DATA_FILE_VERSION = 1;
+  var DEFAULT_DATA_FILE_NAME = "timesheet-data.json";
   var NEW_PROJECT_VALUE = "__new_project__";
   var DEFAULT_PROJECT = "General";
   var VIEW_CALENDAR = "calendar";
@@ -21,12 +21,14 @@
     month: "short"
   });
 
-  var storedEntries = loadEntries();
   var state = {
     viewedDate: startOfMonth(new Date()),
     viewMode: getResponsiveViewMode(),
-    entries: storedEntries,
-    projects: loadProjects(storedEntries)
+    entries: {},
+    projects: normalizeProjects([], {}),
+    dataFileHandle: null,
+    dataFileName: "",
+    dataFileMode: "memory"
   };
 
   var elements = {
@@ -40,6 +42,11 @@
     nextMonthButton: document.getElementById("nextMonthButton"),
     todayButton: document.getElementById("todayButton"),
     viewModeNote: document.getElementById("viewModeNote"),
+    dataFileStatus: document.getElementById("dataFileStatus"),
+    openDataFileButton: document.getElementById("openDataFileButton"),
+    createDataFileButton: document.getElementById("createDataFileButton"),
+    downloadDataFileButton: document.getElementById("downloadDataFileButton"),
+    dataFileInput: document.getElementById("dataFileInput"),
     openReportButton: document.getElementById("openReportButton"),
     entryDialog: document.getElementById("entryDialog"),
     entryForm: document.getElementById("entryForm"),
@@ -77,6 +84,7 @@
   initialize();
 
   function initialize() {
+    renderDataFileStatus();
     renderWeekdays();
     renderMainView();
     bindEvents();
@@ -98,6 +106,11 @@
       state.viewedDate = startOfMonth(new Date());
       renderMainView();
     });
+
+    elements.openDataFileButton.addEventListener("click", openDataFile);
+    elements.createDataFileButton.addEventListener("click", createDataFile);
+    elements.downloadDataFileButton.addEventListener("click", downloadDataFile);
+    elements.dataFileInput.addEventListener("change", importDataFile);
 
     elements.openReportButton.addEventListener("click", openReportDialog);
     elements.closeEntryButton.addEventListener("click", closeEntryDialog);
@@ -139,6 +152,208 @@
       weekdayElement.textContent = weekday;
       elements.calendarWeekdays.appendChild(weekdayElement);
     });
+  }
+
+  async function openDataFile() {
+    if (hasDirectFileAccess()) {
+      await openDataFileWithPicker();
+      return;
+    }
+
+    elements.dataFileInput.click();
+  }
+
+  async function openDataFileWithPicker() {
+    var handles;
+
+    try {
+      handles = await window.showOpenFilePicker({
+        multiple: false,
+        types: [dataFilePickerType()]
+      });
+
+      if (!handles || handles.length === 0) {
+        return;
+      }
+
+      await loadDataFromHandle(handles[0]);
+    } catch (error) {
+      handleDataFileError(error, "Could not open the selected data file.");
+    }
+  }
+
+  async function createDataFile() {
+    var handle;
+
+    if (!hasDirectFileAccess()) {
+      downloadDataFile();
+      setDataFileStatus("Your browser does not allow direct file writing here. A JSON data file was downloaded instead.", false);
+      return;
+    }
+
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: DEFAULT_DATA_FILE_NAME,
+        types: [dataFilePickerType()]
+      });
+      state.dataFileHandle = handle;
+      state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = "direct";
+      await writeDataFile();
+      renderDataFileStatus("Created and connected " + state.dataFileName + ".");
+    } catch (error) {
+      handleDataFileError(error, "Could not create the data file.");
+    }
+  }
+
+  async function importDataFile(event) {
+    var file = event.target.files && event.target.files[0];
+    var text;
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      text = await file.text();
+      applyDataFileText(text);
+      state.dataFileHandle = null;
+      state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = "download";
+      renderDataFileStatus("Imported " + state.dataFileName + ". Use Download data file after changes to save a new copy.");
+      renderAfterDataChange();
+    } catch (error) {
+      setDataFileStatus("Could not import that data file. Please choose a valid JSON data file.", true);
+    } finally {
+      elements.dataFileInput.value = "";
+    }
+  }
+
+  async function loadDataFromHandle(handle) {
+    var file = await handle.getFile();
+    var text = await file.text();
+
+    applyDataFileText(text);
+    state.dataFileHandle = handle;
+    state.dataFileName = handle.name || file.name || DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "direct";
+    renderDataFileStatus("Connected to " + state.dataFileName + ". Changes will save to this file.");
+    renderAfterDataChange();
+  }
+
+  function applyDataFileText(text) {
+    var parsed = safeJsonParse(text, null);
+    var data = normalizeDataFile(parsed);
+
+    state.entries = data.entries;
+    state.projects = data.projects;
+  }
+
+  function normalizeDataFile(data) {
+    var entriesSource;
+    var projectsSource;
+    var entries;
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Invalid data file");
+    }
+
+    entriesSource = data.entries && typeof data.entries === "object" ? data.entries : data;
+    projectsSource = Array.isArray(data.projects) ? data.projects : [];
+    entries = normalizeEntries(entriesSource);
+
+    return {
+      entries: entries,
+      projects: normalizeProjects(projectsSource, entries)
+    };
+  }
+
+  async function persistData() {
+    if (state.dataFileMode === "direct" && state.dataFileHandle) {
+      await writeDataFile();
+      renderDataFileStatus("Saved to " + state.dataFileName + ".");
+      return true;
+    }
+
+    renderDataFileStatus("Changes are in memory only. Click Download data file to save them on this PC.", false);
+    return false;
+  }
+
+  async function writeDataFile() {
+    var writable = await state.dataFileHandle.createWritable();
+
+    await writable.write(JSON.stringify(buildDataFilePayload(), null, 2));
+    await writable.close();
+  }
+
+  function downloadDataFile() {
+    var blob = new Blob([JSON.stringify(buildDataFilePayload(), null, 2)], { type: "application/json;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+
+    link.href = url;
+    link.download = state.dataFileName || DEFAULT_DATA_FILE_NAME;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildDataFilePayload() {
+    return {
+      version: DATA_FILE_VERSION,
+      updatedAt: new Date().toISOString(),
+      entries: state.entries,
+      projects: state.projects
+    };
+  }
+
+  function renderAfterDataChange() {
+    state.projects = normalizeProjects(state.projects, state.entries);
+    renderMainView();
+  }
+
+  function renderDataFileStatus(message) {
+    if (message) {
+      setDataFileStatus(message, false);
+      return;
+    }
+
+    if (state.dataFileMode === "direct" && state.dataFileName) {
+      setDataFileStatus("Connected to " + state.dataFileName + ". Changes save to this local file.", false);
+    } else if (state.dataFileMode === "download" && state.dataFileName) {
+      setDataFileStatus("Imported " + state.dataFileName + ". Use Download data file after changes to save a new copy.", false);
+    } else {
+      setDataFileStatus("No data file connected. Open or create " + DEFAULT_DATA_FILE_NAME + " to save entries on this PC.", false);
+    }
+  }
+
+  function setDataFileStatus(message, isError) {
+    elements.dataFileStatus.textContent = message;
+    elements.dataFileStatus.classList.toggle("error", Boolean(isError));
+  }
+
+  function hasDirectFileAccess() {
+    return typeof window !== "undefined" &&
+      typeof window.showOpenFilePicker === "function" &&
+      typeof window.showSaveFilePicker === "function";
+  }
+
+  function dataFilePickerType() {
+    return {
+      description: "Timesheet JSON data",
+      accept: {
+        "application/json": [".json"]
+      }
+    };
+  }
+
+  function handleDataFileError(error, fallbackMessage) {
+    if (error && error.name === "AbortError") {
+      return;
+    }
+
+    setDataFileStatus(fallbackMessage, true);
   }
 
   function bindResponsiveViewMode() {
@@ -416,7 +631,7 @@
     });
   }
 
-  function saveEntry(event) {
+  async function saveEntry(event) {
     event.preventDefault();
     clearMessage(elements.entryMessage);
 
@@ -441,7 +656,6 @@
     if (state.projects.indexOf(project) === -1) {
       state.projects.push(project);
       state.projects.sort(caseInsensitiveSort);
-      saveProjects();
     }
 
     entries = entriesForDate(dateKey).slice();
@@ -454,11 +668,17 @@
 
     entries.sort(compareEntriesByTime);
     state.entries[dateKey] = entries;
-    saveEntries();
+    try {
+      await persistData();
+    } catch (error) {
+      showMessage(elements.entryMessage, "Entry was updated in memory, but the data file could not be saved.", true);
+      setDataFileStatus("Could not save to " + (state.dataFileName || "the data file") + ". Use Download data file to keep a copy.", true);
+      return;
+    }
     renderDayEntries(dateKey);
     renderMainView();
     resetEntryForm(dateKey);
-    showMessage(elements.entryMessage, "Entry saved.", false);
+    showMessage(elements.entryMessage, state.dataFileMode === "direct" ? "Entry saved to data file." : "Entry saved in memory. Download the data file to keep it.", false);
   }
 
   function deleteSelectedEntry() {
@@ -470,7 +690,7 @@
     }
   }
 
-  function deleteEntryByIndex(dateKey, entryIndex) {
+  async function deleteEntryByIndex(dateKey, entryIndex) {
     var entries = entriesForDate(dateKey).slice();
 
     if (!entries[entryIndex]) {
@@ -485,11 +705,17 @@
       delete state.entries[dateKey];
     }
 
-    saveEntries();
+    try {
+      await persistData();
+    } catch (error) {
+      showMessage(elements.entryMessage, "Entry was deleted in memory, but the data file could not be saved.", true);
+      setDataFileStatus("Could not save to " + (state.dataFileName || "the data file") + ". Use Download data file to keep a copy.", true);
+      return;
+    }
     renderDayEntries(dateKey);
     renderMainView();
     resetEntryForm(dateKey);
-    showMessage(elements.entryMessage, "Entry deleted.", false);
+    showMessage(elements.entryMessage, state.dataFileMode === "direct" ? "Entry deleted from data file." : "Entry deleted in memory. Download the data file to keep it.", false);
   }
 
   function renderProjectOptions(selectedProject) {
@@ -816,8 +1042,7 @@
     URL.revokeObjectURL(url);
   }
 
-  function loadEntries() {
-    var stored = safeJsonParse(localStorage.getItem(ENTRY_STORAGE_KEY), {});
+  function normalizeEntries(stored) {
     var normalized = {};
 
     if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
@@ -865,13 +1090,8 @@
     };
   }
 
-  function saveEntries() {
-    localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(state.entries));
-  }
-
-  function loadProjects(entries) {
-    var stored = safeJsonParse(localStorage.getItem(PROJECT_STORAGE_KEY), null);
-    var projects = (Array.isArray(stored) ? stored : []).concat(projectsFromEntries(entries));
+  function normalizeProjects(projectList, entries) {
+    var projects = (Array.isArray(projectList) ? projectList : []).concat(projectsFromEntries(entries));
     var normalized = projects.map(function (project) {
       return normalizeStoredProject(project);
     }).filter(Boolean);
@@ -890,10 +1110,6 @@
       });
       return projects;
     }, []);
-  }
-
-  function saveProjects() {
-    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(state.projects));
   }
 
   function createEntry(checkIn, checkOut, project, duration, existingId) {
