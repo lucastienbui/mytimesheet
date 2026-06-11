@@ -1,6 +1,6 @@
 # Local Timesheet Calendar
 
-A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It has a calendar-style UI, lets you enter check in/check out times for each day, calculates duration automatically, tracks projects, and exports filtered CSV files.
+A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It has calendar and agenda-style views, lets you enter multiple check in/check out records for each day, calculates duration automatically, tracks projects, and generates project reports with CSV export.
 
 ## Run locally
 
@@ -12,16 +12,18 @@ No server, build step, or internet connection is required.
 
 ## Features
 
-- Calendar month view with previous/next/today controls.
-- Click a day to add or edit:
+- Calendar and agenda month views with previous/next/today controls.
+- Click a day to add, edit, or delete several entries for that date:
   - Check in time in 24-hour format.
   - Check out time in 24-hour format.
   - Duration, calculated automatically in hours.
   - Project, selected from a dropdown or created from the entry dialog.
-- Export button on the main screen.
-- CSV export filters:
+- Report button on the main screen.
+- Report filters:
   - Start and end dates in `DD/MM/YYYY` format.
   - One project, several projects, or all projects.
+- Report preview showing total hours for each selected project.
+- CSV export that starts with total working hours by project, then lists detailed entries by day.
 
 ## Data storage
 

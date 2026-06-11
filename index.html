@@ -14,7 +14,7 @@
           <h1>Timesheet Calendar</h1>
           <p class="subtitle">Track check in, check out, project, and hours on your own computer.</p>
         </div>
-        <button class="primary-button" id="openExportButton" type="button">Export CSV</button>
+        <button class="primary-button" id="openReportButton" type="button">Report</button>
       </header>
 
       <main class="calendar-card" aria-labelledby="calendarTitle">
@@ -28,17 +28,26 @@
         </div>
         <div class="toolbar-actions">
           <button class="secondary-button" id="todayButton" type="button">Today</button>
+          <div class="view-toggle" aria-label="Timesheet view">
+            <button class="toggle-button is-active" id="calendarViewButton" type="button">Calendar</button>
+            <button class="toggle-button" id="agendaViewButton" type="button">Agenda</button>
+          </div>
         </div>
 
-        <section class="calendar-grid" id="calendarWeekdays" aria-hidden="true"></section>
-        <section class="calendar-grid calendar-days" id="calendarDays" aria-label="Calendar days"></section>
+        <section id="calendarView">
+          <section class="calendar-grid" id="calendarWeekdays" aria-hidden="true"></section>
+          <section class="calendar-grid calendar-days" id="calendarDays" aria-label="Calendar days"></section>
+        </section>
+        <section class="agenda-view hidden" id="agendaView" aria-label="Agenda days"></section>
       </main>
 
       <section class="help-card" aria-label="Usage notes">
         <h2>How it works</h2>
         <ul>
-          <li>Click a day to add or edit your check in, check out, and project.</li>
+          <li>Switch between calendar and agenda views for the same monthly records.</li>
+          <li>Click a day to add several check in, check out, and project entries.</li>
           <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
+          <li>Use Report to see project totals for a period and export the detailed CSV.</li>
           <li>Data is stored locally in this browser on this computer using HTML5 localStorage.</li>
         </ul>
       </section>
@@ -55,6 +64,15 @@
         </div>
 
         <input type="hidden" id="entryDate">
+        <input type="hidden" id="entryIndex">
+
+        <section class="day-entry-list" id="dayEntriesSection">
+          <div class="section-heading">
+            <h3>Entries for this day</h3>
+            <button class="secondary-button compact-button" id="newEntryButton" type="button">Add another entry</button>
+          </div>
+          <div id="dayEntriesList"></div>
+        </section>
 
         <label class="field">
           <span>Check in <small>(24-hour format)</small></span>
@@ -97,10 +115,10 @@
       <form id="exportForm" method="dialog" class="modal-panel">
         <div class="modal-header">
           <div>
-            <p class="eyebrow">Export</p>
-            <h2>Export timesheet to CSV</h2>
+            <p class="eyebrow">Report</p>
+            <h2>Timesheet report</h2>
           </div>
-          <button class="ghost-button" id="closeExportButton" type="button" aria-label="Close export dialog">&times;</button>
+          <button class="ghost-button" id="closeExportButton" type="button" aria-label="Close report dialog">&times;</button>
         </div>
 
         <div class="date-range">
@@ -123,11 +141,19 @@
           <div id="projectCheckboxes" class="project-checkboxes"></div>
         </fieldset>
 
+        <section class="report-summary hidden" id="reportSummary">
+          <h3>Total hours by project</h3>
+          <div id="reportTotals"></div>
+          <h3>Entries by day</h3>
+          <div id="reportEntries"></div>
+        </section>
+
         <p class="form-message" id="exportMessage" role="status"></p>
 
         <div class="modal-actions">
           <button class="secondary-button" id="cancelExportButton" type="button">Cancel</button>
-          <button class="primary-button" type="submit">Download CSV</button>
+          <button class="secondary-button" id="previewReportButton" type="button">Show totals</button>
+          <button class="primary-button" type="submit">Export CSV</button>
         </div>
       </form>
     </dialog>
