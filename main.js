@@ -205,7 +205,7 @@ function emptyDataFile() {
     version: 1,
     updatedAt: null,
     entries: {},
-    projects: ["General"]
+    projects: []
   };
 }
 
