@@ -7,7 +7,7 @@ A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It a
 1. Download or clone this repository to your computer.
 2. Double-click `MyTimesheet.html` to open it in your web browser.
 3. The app will try to load `timesheet-data.json` from the same folder automatically when your browser allows it.
-4. If it does not load automatically, click **Open app folder** and choose the folder containing `MyTimesheet.html`; the app will find or create `timesheet-data.json` there. You can also click **Create data file** and save a new `timesheet-data.json` in the same folder.
+4. If it does not load automatically, click **Open data file** and choose `timesheet-data.json`. You can also click **Create data file** and save a new `timesheet-data.json`.
 5. Start entering timesheet records by clicking days on the calendar or agenda.
 
 No server, build step, or internet connection is required.
@@ -20,7 +20,6 @@ No server, build step, or internet connection is required.
 - Click a day, then click **Add new entry** or **Edit** to show the entry form:
   - Check in time in 24-hour format.
   - Check out time in 24-hour format.
-  - Time pickers use 5-minute increments.
   - Duration, calculated automatically in hours.
   - Project, selected from a dropdown or created from the entry dialog.
 - Report button on the main screen.
