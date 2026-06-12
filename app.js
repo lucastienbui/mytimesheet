@@ -29,6 +29,7 @@
     entries: {},
     projects: normalizeProjects([], {}),
     dataFileHandle: null,
+    dataDirectoryHandle: null,
     dataFileName: "",
     dataFileMode: "memory"
   };
@@ -176,12 +177,48 @@
   }
 
   async function openDataFile() {
+    if (hasDirectoryAccess()) {
+      await openAppFolder(true);
+      return;
+    }
+
     if (hasDirectFileAccess()) {
       await openDataFileWithPicker();
       return;
     }
 
     elements.dataFileInput.click();
+  }
+
+  async function openAppFolder(preferCurrentData) {
+    var directoryHandle;
+    var fileHandle;
+    var file;
+    var text;
+
+    try {
+      directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      fileHandle = await directoryHandle.getFileHandle(DEFAULT_DATA_FILE_NAME, { create: true });
+      file = await fileHandle.getFile();
+      text = await file.text();
+
+      if (preferCurrentData) {
+        await writePayloadToHandle(fileHandle);
+      } else if (text.trim()) {
+        applyDataFileText(text);
+      } else {
+        await writePayloadToHandle(fileHandle);
+      }
+
+      state.dataDirectoryHandle = directoryHandle;
+      state.dataFileHandle = fileHandle;
+      state.dataFileName = DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = "direct";
+      renderAfterDataChange();
+      renderDataFileStatus("Connected to app folder and " + DEFAULT_DATA_FILE_NAME + ". Entries will save automatically.");
+    } catch (error) {
+      handleDataFileError(error, "Could not open the app folder or connect " + DEFAULT_DATA_FILE_NAME + ".");
+    }
   }
 
   async function openDataFileWithPicker() {
@@ -218,6 +255,7 @@
         types: [dataFilePickerType()]
       });
       state.dataFileHandle = handle;
+      state.dataDirectoryHandle = null;
       state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
       state.dataFileMode = "direct";
       await writeDataFile();
@@ -245,15 +283,17 @@
         shouldCopyToDefault = confirmDefaultDataFileCopy(file.name);
         if (shouldCopyToDefault) {
           state.dataFileHandle = null;
+          state.dataDirectoryHandle = null;
           state.dataFileName = DEFAULT_DATA_FILE_NAME;
           state.dataFileMode = "download";
           downloadDataFile(DEFAULT_DATA_FILE_NAME);
-          renderDataFileStatus("Imported " + file.name + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside index.html if needed.");
+          renderDataFileStatus("Imported " + file.name + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside MyTimesheet.html if needed.");
           return;
         }
       }
 
       state.dataFileHandle = null;
+      state.dataDirectoryHandle = null;
       state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
       state.dataFileMode = "download";
       renderDataFileStatus("Imported " + state.dataFileName + ". Use Download data file after changes to save a new copy.");
@@ -287,6 +327,7 @@
     }
 
     state.dataFileHandle = handle;
+    state.dataDirectoryHandle = null;
     state.dataFileName = handle.name || file.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
     renderDataFileStatus("Connected to " + state.dataFileName + ". Changes will save to this file.");
@@ -310,6 +351,7 @@
       text = await response.text();
       applyDataFileText(text);
       state.dataFileHandle = null;
+      state.dataDirectoryHandle = null;
       state.dataFileName = DEFAULT_DATA_FILE_NAME;
       state.dataFileMode = "download";
       renderDataFileStatus("Loaded " + DEFAULT_DATA_FILE_NAME + " from the app folder. Use Open data file to connect it for automatic saving, or Download data file after changes.");
@@ -324,10 +366,11 @@
 
     if (!hasDirectFileAccess()) {
       state.dataFileHandle = null;
+      state.dataDirectoryHandle = null;
       state.dataFileName = DEFAULT_DATA_FILE_NAME;
       state.dataFileMode = "download";
       downloadDataFile(DEFAULT_DATA_FILE_NAME);
-      renderDataFileStatus("Imported " + sourceFileName + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside index.html if needed.");
+      renderDataFileStatus("Imported " + sourceFileName + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside MyTimesheet.html if needed.");
       return;
     }
 
@@ -336,6 +379,7 @@
       types: [dataFilePickerType()]
     });
     state.dataFileHandle = handle;
+    state.dataDirectoryHandle = null;
     state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
     await writeDataFile();
@@ -387,12 +431,26 @@
       return true;
     }
 
+    if (hasDirectoryAccess()) {
+      await openAppFolder();
+
+      if (state.dataFileMode === "direct" && state.dataFileHandle) {
+        await writeDataFile();
+        renderDataFileStatus("Saved to " + state.dataFileName + ".");
+        return true;
+      }
+    }
+
     renderDataFileStatus("Changes are in memory only. Click Download data file to save them on this PC.", false);
     return false;
   }
 
   async function writeDataFile() {
-    var writable = await state.dataFileHandle.createWritable();
+    await writePayloadToHandle(state.dataFileHandle);
+  }
+
+  async function writePayloadToHandle(fileHandle) {
+    var writable = await fileHandle.createWritable();
 
     await writable.write(JSON.stringify(buildDataFilePayload(), null, 2));
     await writable.close();
@@ -449,6 +507,10 @@
     return typeof window !== "undefined" &&
       typeof window.showOpenFilePicker === "function" &&
       typeof window.showSaveFilePicker === "function";
+  }
+
+  function hasDirectoryAccess() {
+    return typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
   }
 
   function dataFilePickerType() {

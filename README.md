@@ -5,9 +5,9 @@ A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It a
 ## Run locally
 
 1. Download or clone this repository to your computer.
-2. Double-click `index.html` to open it in your web browser.
+2. Double-click `MyTimesheet.html` to open it in your web browser.
 3. The app will try to load `timesheet-data.json` from the same folder automatically when your browser allows it.
-4. If it does not load automatically, click **Open data file** and choose `timesheet-data.json`, or click **Create data file** and save a new `timesheet-data.json` in the same folder.
+4. If it does not load automatically, click **Open app folder** and choose the folder containing `MyTimesheet.html`; the app will find or create `timesheet-data.json` there. You can also click **Create data file** and save a new `timesheet-data.json` in the same folder.
 5. Start entering timesheet records by clicking days on the calendar or agenda.
 
 No server, build step, or internet connection is required.
@@ -39,4 +39,4 @@ Modern browsers do not allow a web page to silently write to files on your compu
 
 If you select a differently named JSON file, the app warns you and lets you copy/save that data as `timesheet-data.json` so the app folder keeps a consistent data file.
 
-Keep `timesheet-data.json` in the same folder as `index.html` if you want all app files together.
+Keep `timesheet-data.json` in the same folder as `MyTimesheet.html` if you want all app files together.
