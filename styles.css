@@ -286,6 +286,11 @@ small {
 .agenda-view {
   display: grid;
   gap: 12px;
+  max-height: 424px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+  scroll-padding-top: 0;
 }
 
 .agenda-day {
@@ -293,10 +298,12 @@ small {
   grid-template-columns: 140px 1fr auto;
   align-items: center;
   gap: 16px;
+  min-height: 72px;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: #ffffff;
+  scroll-snap-align: start;
 }
 
 .agenda-day.has-entry {
@@ -592,7 +599,6 @@ small {
 @media (max-width: 760px) {
   .app-header,
   .data-card,
-  .calendar-toolbar,
   .toolbar-actions,
   .split-actions,
   .section-heading,
@@ -601,12 +607,20 @@ small {
     flex-direction: column;
   }
 
+  .calendar-toolbar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+  }
+
   .calendar-title-group {
-    order: -1;
+    min-width: 0;
   }
 
   .icon-button {
-    width: 100%;
+    width: 44px;
+    height: 44px;
+    font-size: 1.8rem;
   }
 
   .view-toggle {

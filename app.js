@@ -623,6 +623,7 @@
     var year = state.viewedDate.getFullYear();
     var month = state.viewedDate.getMonth();
     var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var defaultDay = getAgendaDefaultDay(year, month);
 
     elements.agendaView.innerHTML = "";
 
@@ -634,7 +635,8 @@
       var details = document.createElement("div");
       var openButton = document.createElement("button");
 
-      row.className = "agenda-day" + (entries.length > 0 ? " has-entry" : "");
+      row.className = "agenda-day" + (entries.length > 0 ? " has-entry" : "") + (day === defaultDay ? " is-agenda-scroll-target" : "");
+      row.setAttribute("data-date", dateKey);
       row.innerHTML =
         '<div class="agenda-date">' +
         escapeHtml(shortDateFormatter.format(date)) +
@@ -665,6 +667,35 @@
       row.appendChild(details);
       row.appendChild(openButton);
       elements.agendaView.appendChild(row);
+    }
+
+    scrollAgendaToDefaultDay(defaultDay);
+  }
+
+  function getAgendaDefaultDay(year, month) {
+    var today = new Date();
+
+    if (today.getFullYear() === year && today.getMonth() === month) {
+      return today.getDate();
+    }
+
+    return 1;
+  }
+
+  function scrollAgendaToDefaultDay(day) {
+    var targetRow = elements.agendaView.children[day - 1];
+
+    if (!targetRow) {
+      return;
+    }
+
+    if (typeof targetRow.scrollIntoView === "function") {
+      targetRow.scrollIntoView({ block: "start" });
+      return;
+    }
+
+    if (typeof targetRow.offsetTop === "number") {
+      elements.agendaView.scrollTop = targetRow.offsetTop;
     }
   }
 

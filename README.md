@@ -16,6 +16,7 @@ No server, build step, or internet connection is required.
 
 - Auto, Calendar, and Agenda month view options with previous/next/today controls.
 - Auto uses calendar on wider windows and agenda on smaller windows.
+- Agenda view is scrollable and opens at today for the current month, or the first day for other months.
 - Calendar day cells show only the number of entries and total hours; blank days do not show filler text.
 - Click a day, then click **Add new entry** or **Edit** to show the entry form:
   - Check in time in 24-hour format.
