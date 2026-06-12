@@ -29,7 +29,6 @@
     viewMode: getSelectedViewMode(VIEW_AUTO),
     entries: {},
     projects: normalizeProjects([], {}),
-    dataFileHandle: null,
     dataFileName: DEFAULT_DATA_FILE_NAME,
     dataFileMode: "memory"
   };
@@ -48,6 +47,7 @@
     calendarViewButton: document.getElementById("calendarViewButton"),
     agendaViewButton: document.getElementById("agendaViewButton"),
     dataFileStatus: document.getElementById("dataFileStatus"),
+    exportDataButton: document.getElementById("exportDataButton"),
     openReportButton: document.getElementById("openReportButton"),
     entryDialog: document.getElementById("entryDialog"),
     entryForm: document.getElementById("entryForm"),
@@ -122,6 +122,7 @@
       setViewPreference(VIEW_AGENDA);
     });
 
+    elements.exportDataButton.addEventListener("click", exportDataFile);
     elements.openReportButton.addEventListener("click", openReportDialog);
     elements.closeEntryButton.addEventListener("click", closeEntryDialog);
     elements.cancelEntryButton.addEventListener("click", function () {
@@ -211,66 +212,47 @@
   }
 
   async function persistData() {
-    if (state.dataFileMode === "direct" && state.dataFileHandle) {
-      await writeDataFile();
-      renderDataFileStatus("Saved to " + state.dataFileName + ".");
-      return true;
-    }
-
-    return createDefaultDataFileForSave();
-  }
-
-  async function createDefaultDataFileForSave() {
-    showAutoCreateDataFileNotice();
-
-    if (hasDirectFileAccess()) {
-      try {
-        await connectNewDefaultDataFile();
-        renderDataFileStatus("Created " + state.dataFileName + ". Entries will save automatically to this file.");
-        return true;
-      } catch (error) {
-        if (error && error.name === "AbortError") {
-          renderDataFileStatus("Save cancelled. Changes are in memory only until a data file is selected or created.", true);
-          return false;
-        }
-
-        throw error;
-      }
-    }
-
-    state.dataFileHandle = null;
-    state.dataFileName = DEFAULT_DATA_FILE_NAME;
-    state.dataFileMode = "download";
-    downloadDataFile(DEFAULT_DATA_FILE_NAME);
-    renderDataFileStatus("Saved " + DEFAULT_DATA_FILE_NAME + ". Keep it beside MyTimesheet.html so it loads next time.");
+    updateLocalDataGlobal();
+    state.dataFileMode = "changed";
+    renderDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.");
     return true;
   }
 
-  async function connectNewDefaultDataFile() {
-    var handle = await window.showSaveFilePicker({
-      suggestedName: DEFAULT_DATA_FILE_NAME,
-      types: [dataFilePickerType()]
-    });
+  async function exportDataFile() {
+    var handle;
 
-    state.dataFileHandle = handle;
-    state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
-    state.dataFileMode = "direct";
-    await writeDataFile();
-  }
+    updateLocalDataGlobal();
 
-  function showAutoCreateDataFileNotice() {
-    if (typeof window === "undefined" || typeof window.alert !== "function") {
-      return;
+    if (supportsSavePicker()) {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: DEFAULT_DATA_FILE_NAME,
+          types: [dataFilePickerType()]
+        });
+        await writePayloadToHandle(handle);
+        state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+        state.dataFileMode = "exported";
+        renderDataFileStatus("Exported " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.");
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+
+        setDataFileStatus("Could not export " + DEFAULT_DATA_FILE_NAME + ". A download will be attempted instead.", true);
+      }
     }
 
-    window.alert(
-      "No data file is selected. The app will create " + DEFAULT_DATA_FILE_NAME + " now.\\n\\n" +
-      "Save it in the same folder as MyTimesheet.html so your entries stay with the app files."
-    );
+    downloadDataFile(DEFAULT_DATA_FILE_NAME);
+    state.dataFileName = DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "exported";
+    renderDataFileStatus("Downloaded " + DEFAULT_DATA_FILE_NAME + ". Replace the local file beside MyTimesheet.html with this copy.");
   }
 
-  async function writeDataFile() {
-    await writePayloadToHandle(state.dataFileHandle);
+  function updateLocalDataGlobal() {
+    if (typeof window !== "undefined") {
+      window[DATA_GLOBAL_NAME] = buildDataFilePayload();
+    }
   }
 
   async function writePayloadToHandle(fileHandle) {
@@ -317,9 +299,9 @@
       return;
     }
 
-    if (state.dataFileMode === "direct" && state.dataFileName) {
-      setDataFileStatus("Connected to " + state.dataFileName + ". Changes save to this local file.", false);
-    } else if (state.dataFileMode === "download" && state.dataFileName) {
+    if (state.dataFileMode === "changed") {
+      setDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.", false);
+    } else if (state.dataFileMode === "exported" && state.dataFileName) {
       setDataFileStatus("Saved " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.", false);
     } else {
       setDataFileStatus("Using " + DEFAULT_DATA_FILE_NAME + " from this folder. Save an entry to update that file.", false);
@@ -331,7 +313,7 @@
     elements.dataFileStatus.classList.toggle("error", Boolean(isError));
   }
 
-  function hasDirectFileAccess() {
+  function supportsSavePicker() {
     return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
   }
 

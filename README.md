@@ -7,7 +7,7 @@ A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It a
 1. Download or clone this repository to your computer.
 2. Double-click `MyTimesheet.html` to open it in your web browser.
 3. The app loads `timesheet-data.js` from the same folder automatically.
-4. Save an entry to update `timesheet-data.js`. If the browser needs permission, it will prompt you to save a file with that default name.
+4. Save entries in the app, then click **Export data** to write/download an updated `timesheet-data.js` file with that default name.
 5. Start entering timesheet records by clicking days on the calendar or agenda.
 
 No server, build step, or internet connection is required.
@@ -35,7 +35,7 @@ No server, build step, or internet connection is required.
 
 Timesheet data is stored in `timesheet-data.js` on your computer, not in browser site cache.
 
-Modern browsers do not allow a web page to silently write to files on your computer. The app loads the local `timesheet-data.js` file automatically. When saving, it writes or downloads a new `timesheet-data.js` file with that default filename.
+Modern browsers do not allow a web page to silently write to files on your computer. The app loads the local `timesheet-data.js` file automatically. After you add or edit entries, click **Export data** to write or download a new `timesheet-data.js` file with that default filename.
 
 If you have an old data file, export it first and copy its data into the local `timesheet-data.js` file in this folder before using this version.
 
