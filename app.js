@@ -214,7 +214,7 @@
     var result;
 
     if (!isDesktopApp()) {
-      exportDataFile();
+      await openBrowserDataFile();
       return;
     }
 
@@ -235,15 +235,16 @@
 
   async function createDesktopDataFile() {
     var result;
+    var blankPayload = buildBlankDataFilePayload();
 
+    applyDataFileData(blankPayload);
     updateLocalDataGlobal();
 
     if (!isDesktopApp()) {
-      exportDataFile();
-      return;
+      return createBrowserDataFile(blankPayload);
     }
 
-    result = await window.myTimesheetDesktop.createDataFile(buildDataFilePayload());
+    result = await window.myTimesheetDesktop.createDataFile(blankPayload);
 
     if (!result || result.canceled) {
       return false;
@@ -299,7 +300,7 @@
 
     if (isDesktopApp()) {
       if (!state.dataFilePath) {
-        return createDesktopDataFile();
+        return connectDesktopDataFileWithCurrentData();
       }
 
       await saveDesktopDataFile();
@@ -424,15 +425,137 @@
     return Boolean(window.myTimesheetDesktop && window.myTimesheetDesktop.isDesktop);
   }
 
-  async function writePayloadToHandle(fileHandle) {
+  async function openBrowserDataFile() {
+    var handles;
+    var file;
+    var content;
+
+    if (supportsOpenPicker()) {
+      try {
+        handles = await window.showOpenFilePicker({
+          types: [dataFilePickerType()],
+          multiple: false
+        });
+        file = await handles[0].getFile();
+        content = await file.text();
+        applyDataFileData(parseDataFileContent(content));
+        state.dataFileHandle = handles[0];
+        state.dataFilePath = "";
+        state.dataFileName = handles[0].name || DEFAULT_DATA_FILE_NAME;
+        state.dataFileMode = "connected";
+        updateLocalDataGlobal();
+        renderAfterDataChange();
+        renderDataFileStatus("Opened " + state.dataFileName + ". Changes will save automatically.");
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+
+        setDataFileStatus("Could not open data file.", true);
+        return;
+      }
+    }
+
+    await openBrowserDataFileWithInput();
+  }
+
+  function openBrowserDataFileWithInput() {
+    return new Promise(function (resolve) {
+      var input = ensureDataFileInput();
+
+      input.onchange = async function () {
+        var file = input.files && input.files[0];
+        input.value = "";
+
+        if (!file) {
+          resolve();
+          return;
+        }
+
+        try {
+          applyDataFileData(parseDataFileContent(await file.text()));
+          state.dataFileHandle = null;
+          state.dataFilePath = "";
+          state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
+          state.dataFileMode = "loaded";
+          updateLocalDataGlobal();
+          renderAfterDataChange();
+          renderDataFileStatus("Opened " + state.dataFileName + ". Click Export data to save changes to a file.");
+        } catch (error) {
+          setDataFileStatus("Could not open data file.", true);
+        }
+
+        resolve();
+      };
+
+      input.click();
+    });
+  }
+
+  async function createBrowserDataFile(blankPayload) {
+    var handle;
+
+    if (supportsSavePicker()) {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: DEFAULT_DATA_FILE_NAME,
+          types: [dataFilePickerType()]
+        });
+        await writePayloadToHandle(handle, blankPayload);
+        state.dataFileHandle = handle;
+        state.dataFilePath = "";
+        state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+        state.dataFileMode = "connected";
+        renderAfterDataChange();
+        renderDataFileStatus("Created " + state.dataFileName + ". Changes will save automatically.");
+        return true;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return false;
+        }
+
+        setDataFileStatus("Could not create data file.", true);
+        return false;
+      }
+    }
+
+    downloadDataFile(DEFAULT_DATA_FILE_NAME, blankPayload);
+    state.dataFileHandle = null;
+    state.dataFilePath = "";
+    state.dataFileName = DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "exported";
+    renderAfterDataChange();
+    renderDataFileStatus("Created " + DEFAULT_DATA_FILE_NAME + ". Keep it beside MyTimesheet.html so it can be opened next time.");
+    return true;
+  }
+
+  async function connectDesktopDataFileWithCurrentData() {
+    var result = await window.myTimesheetDesktop.exportDataFile(buildDataFilePayload());
+
+    if (!result || result.canceled) {
+      return false;
+    }
+
+    if (!result.ok) {
+      setDataFileStatus(result.error || "Could not save data file.", true);
+      return false;
+    }
+
+    applyDesktopDataFile(result);
+    renderDataFileStatus("Saved to " + state.dataFileName + ". Changes will save automatically.");
+    return true;
+  }
+
+  async function writePayloadToHandle(fileHandle, payload) {
     var writable = await fileHandle.createWritable();
 
-    await writable.write(buildDataFileContent());
+    await writable.write(buildDataFileContent(payload));
     await writable.close();
   }
 
-  function downloadDataFile(fileName) {
-    var blob = new Blob([buildDataFileContent()], { type: "application/javascript;charset=utf-8;" });
+  function downloadDataFile(fileName, payload) {
+    var blob = new Blob([buildDataFileContent(payload)], { type: "application/javascript;charset=utf-8;" });
     var url = URL.createObjectURL(blob);
     var link = document.createElement("a");
 
@@ -453,8 +576,44 @@
     };
   }
 
-  function buildDataFileContent() {
-    return "window." + DATA_GLOBAL_NAME + " = " + JSON.stringify(buildDataFilePayload(), null, 2) + ";\n";
+  function buildBlankDataFilePayload() {
+    return {
+      version: DATA_FILE_VERSION,
+      updatedAt: null,
+      entries: {},
+      projects: [DEFAULT_PROJECT]
+    };
+  }
+
+  function buildDataFileContent(payload) {
+    var data = payload || buildDataFilePayload();
+
+    return "window." + DATA_GLOBAL_NAME + " = " + JSON.stringify(data, null, 2) + ";\n";
+  }
+
+  function parseDataFileContent(content) {
+    var trimmed = (content || "").trim();
+    var assignmentPattern;
+    var match;
+
+    if (!trimmed) {
+      return buildBlankDataFilePayload();
+    }
+
+    if (trimmed.charAt(0) === "{") {
+      return JSON.parse(trimmed);
+    }
+
+    assignmentPattern = new RegExp(
+      "^\\s*(?:window\\.)?" + DATA_GLOBAL_NAME + "\\s*=\\s*([\\s\\S]*?)\\s*;?\\s*$"
+    );
+    match = assignmentPattern.exec(trimmed);
+
+    if (!match) {
+      throw new Error("Data file must define window." + DATA_GLOBAL_NAME + ".");
+    }
+
+    return JSON.parse(match[1]);
   }
 
   function renderAfterDataChange() {
@@ -486,6 +645,25 @@
 
   function supportsSavePicker() {
     return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+  }
+
+  function supportsOpenPicker() {
+    return typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+  }
+
+  function ensureDataFileInput() {
+    var input = document.getElementById("dataFileInput");
+
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "file";
+      input.id = "dataFileInput";
+      input.accept = ".js,application/javascript,text/javascript";
+      input.hidden = true;
+      document.body.appendChild(input);
+    }
+
+    return input;
   }
 
   function dataFilePickerType() {
