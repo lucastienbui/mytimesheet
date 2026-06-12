@@ -32,7 +32,10 @@
     dataFileHandle: null,
     dataFilePath: "",
     dataFileName: DEFAULT_DATA_FILE_NAME,
-    dataFileMode: "memory"
+    dataFileMode: "memory",
+    selectedProject: DEFAULT_PROJECT,
+    isCreatingProject: false,
+    pendingDeleteProject: ""
   };
 
   var elements = {
@@ -68,10 +71,21 @@
     checkInInput: document.getElementById("checkInInput"),
     checkOutInput: document.getElementById("checkOutInput"),
     durationInput: document.getElementById("durationInput"),
-    projectSelect: document.getElementById("projectSelect"),
+    projectPicker: document.getElementById("projectPicker"),
+    projectPickerTrigger: document.getElementById("projectPickerTrigger"),
+    projectPickerValue: document.getElementById("projectPickerValue"),
+    projectPickerMenu: document.getElementById("projectPickerMenu"),
+    projectPickerList: document.getElementById("projectPickerList"),
+    createProjectOption: document.getElementById("createProjectOption"),
+    descriptionInput: document.getElementById("descriptionInput"),
     newProjectField: document.getElementById("newProjectField"),
     newProjectInput: document.getElementById("newProjectInput"),
     entryMessage: document.getElementById("entryMessage"),
+    deleteProjectDialog: document.getElementById("deleteProjectDialog"),
+    deleteProjectMessage: document.getElementById("deleteProjectMessage"),
+    closeDeleteProjectButton: document.getElementById("closeDeleteProjectButton"),
+    cancelDeleteProjectButton: document.getElementById("cancelDeleteProjectButton"),
+    confirmDeleteProjectButton: document.getElementById("confirmDeleteProjectButton"),
     exportDialog: document.getElementById("exportDialog"),
     exportForm: document.getElementById("exportForm"),
     closeExportButton: document.getElementById("closeExportButton"),
@@ -144,9 +158,24 @@
 
     elements.checkInInput.addEventListener("input", updateDurationPreview);
     elements.checkOutInput.addEventListener("input", updateDurationPreview);
-    elements.projectSelect.addEventListener("change", toggleNewProjectField);
+    elements.projectPickerTrigger.addEventListener("click", toggleProjectPickerMenu);
+    elements.createProjectOption.addEventListener("click", chooseCreateProjectOption);
+    elements.closeDeleteProjectButton.addEventListener("click", closeDeleteProjectDialog);
+    elements.cancelDeleteProjectButton.addEventListener("click", closeDeleteProjectDialog);
+    elements.confirmDeleteProjectButton.addEventListener("click", confirmDeleteProject);
+    elements.deleteProjectDialog.addEventListener("click", function (event) {
+      if (event.target === elements.deleteProjectDialog) {
+        closeDeleteProjectDialog();
+      }
+    });
     elements.entryForm.addEventListener("submit", saveEntry);
     elements.deleteEntryButton.addEventListener("click", deleteSelectedEntry);
+
+    document.addEventListener("click", function (event) {
+      if (!elements.projectPicker.contains(event.target)) {
+        closeProjectPickerMenu();
+      }
+    });
 
     elements.previewReportButton.addEventListener("click", showReportPreview);
     elements.exportForm.addEventListener("submit", exportCsv);
@@ -934,6 +963,8 @@
     elements.newProjectField.classList.add("hidden");
     elements.newProjectInput.required = false;
     elements.deleteEntryButton.classList.add("hidden");
+    closeProjectPickerMenu();
+    state.isCreatingProject = false;
   }
 
   function resetEntryForm(dateKey) {
@@ -943,10 +974,11 @@
     elements.entryIndex.value = "";
     elements.entryDialogTitle.textContent = "Add entry for " + formatDisplayDate(parseKey(dateKey));
     elements.entryEditor.classList.remove("hidden");
-    renderProjectOptions("");
+    state.isCreatingProject = false;
+    renderProjectPicker("");
+    elements.descriptionInput.value = "";
     elements.deleteEntryButton.classList.add("hidden");
     updateDurationPreview();
-    toggleNewProjectField();
   }
 
   function loadEntryIntoForm(dateKey, entryIndex) {
@@ -963,9 +995,10 @@
     elements.entryIndex.value = String(entryIndex);
     elements.entryDialogTitle.textContent = "Edit entry for " + formatDisplayDate(parseKey(dateKey));
     elements.entryEditor.classList.remove("hidden");
-    renderProjectOptions(entry.project);
+    renderProjectPicker(entry.project);
     elements.checkInInput.value = entry.checkIn;
     elements.checkOutInput.value = entry.checkOut;
+    elements.descriptionInput.value = entry.description || "";
     elements.deleteEntryButton.classList.remove("hidden");
     updateDurationPreview();
     toggleNewProjectField();
@@ -1001,7 +1034,8 @@
         "</strong><br>" +
         formatHours(entry.duration) +
         " hours · " +
-        escapeHtml(entry.project);
+        escapeHtml(entry.project) +
+        (entry.description ? "<br><span class=\"entry-description\">" + escapeHtml(entry.description) + "</span>" : "");
 
       actions.className = "entry-card-actions";
       editButton.className = "secondary-button compact-button";
@@ -1033,6 +1067,7 @@
     var checkOut = elements.checkOutInput.value;
     var duration = calculateDuration(checkIn, checkOut);
     var project = getSelectedProject();
+    var description = normalizeDescription(elements.descriptionInput.value);
     var entryIndex = elements.entryIndex.value === "" ? null : Number(elements.entryIndex.value);
     var entries;
 
@@ -1054,9 +1089,9 @@
     entries = entriesForDate(dateKey).slice();
 
     if (entryIndex !== null && entries[entryIndex]) {
-      entries[entryIndex] = createEntry(checkIn, checkOut, project, duration, entries[entryIndex].id);
+      entries[entryIndex] = createEntry(checkIn, checkOut, project, duration, entries[entryIndex].id, description);
     } else {
-      entries.push(createEntry(checkIn, checkOut, project, duration));
+      entries.push(createEntry(checkIn, checkOut, project, duration, null, description));
     }
 
     entries.sort(compareEntriesByTime);
@@ -1109,48 +1144,189 @@
     showEntryListOnly(dateKey);
   }
 
-  function renderProjectOptions(selectedProject) {
-    elements.projectSelect.innerHTML = "";
+  function renderProjectPicker(selectedProject) {
+    var activeProject = selectedProject && state.projects.indexOf(selectedProject) !== -1
+      ? selectedProject
+      : state.projects[0] || DEFAULT_PROJECT;
+
+    if (state.isCreatingProject) {
+      activeProject = NEW_PROJECT_VALUE;
+    }
+
+    state.selectedProject = activeProject;
+    elements.projectPickerList.innerHTML = "";
 
     state.projects.forEach(function (project) {
-      var option = document.createElement("option");
-      option.value = project;
-      option.textContent = project;
-      elements.projectSelect.appendChild(option);
+      var row = document.createElement("div");
+      var selectButton = document.createElement("button");
+      var deleteButton = document.createElement("button");
+
+      row.className = "project-picker-row" + (project === activeProject && !state.isCreatingProject ? " is-selected" : "");
+      selectButton.className = "project-picker-name";
+      selectButton.type = "button";
+      selectButton.textContent = project;
+      selectButton.addEventListener("click", function () {
+        chooseProject(project);
+      });
+
+      deleteButton.className = "project-picker-delete";
+      deleteButton.type = "button";
+      deleteButton.setAttribute("aria-label", "Delete " + project);
+      deleteButton.textContent = "Delete";
+      deleteButton.addEventListener("click", function (event) {
+        event.stopPropagation();
+        openDeleteProjectDialog(project);
+      });
+
+      row.appendChild(selectButton);
+      row.appendChild(deleteButton);
+      elements.projectPickerList.appendChild(row);
     });
 
-    var newProjectOption = document.createElement("option");
-    newProjectOption.value = NEW_PROJECT_VALUE;
-    newProjectOption.textContent = "+ Create new project";
-    elements.projectSelect.appendChild(newProjectOption);
+    updateProjectPickerTrigger();
+    toggleNewProjectField();
+  }
 
-    if (selectedProject && state.projects.indexOf(selectedProject) !== -1) {
-      elements.projectSelect.value = selectedProject;
+  function updateProjectPickerTrigger() {
+    if (state.isCreatingProject) {
+      elements.projectPickerValue.textContent = "+ Create new project";
+      return;
+    }
+
+    elements.projectPickerValue.textContent = state.selectedProject || state.projects[0] || DEFAULT_PROJECT;
+  }
+
+  function chooseProject(project) {
+    state.isCreatingProject = false;
+    state.selectedProject = project;
+    closeProjectPickerMenu();
+    renderProjectPicker(project);
+  }
+
+  function chooseCreateProjectOption() {
+    state.isCreatingProject = true;
+    state.selectedProject = NEW_PROJECT_VALUE;
+    closeProjectPickerMenu();
+    renderProjectPicker(NEW_PROJECT_VALUE);
+    elements.newProjectInput.focus();
+  }
+
+  function toggleProjectPickerMenu() {
+    if (elements.projectPickerMenu.classList.contains("hidden")) {
+      openProjectPickerMenu();
     } else {
-      elements.projectSelect.value = state.projects[0] || DEFAULT_PROJECT;
+      closeProjectPickerMenu();
     }
   }
 
-  function toggleNewProjectField() {
-    var isCreatingProject = elements.projectSelect.value === NEW_PROJECT_VALUE;
-    elements.newProjectField.classList.toggle("hidden", !isCreatingProject);
-    elements.newProjectInput.required = isCreatingProject;
+  function openProjectPickerMenu() {
+    renderProjectPicker(state.selectedProject);
+    elements.projectPickerMenu.classList.remove("hidden");
+    elements.projectPickerTrigger.setAttribute("aria-expanded", "true");
+  }
 
-    if (isCreatingProject) {
-      elements.newProjectInput.focus();
-    } else {
+  function closeProjectPickerMenu() {
+    elements.projectPickerMenu.classList.add("hidden");
+    elements.projectPickerTrigger.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleNewProjectField() {
+    elements.newProjectField.classList.toggle("hidden", !state.isCreatingProject);
+    elements.newProjectInput.required = state.isCreatingProject;
+
+    if (!state.isCreatingProject) {
       elements.newProjectInput.value = "";
     }
   }
 
   function getSelectedProject() {
-    var selectedProject = elements.projectSelect.value;
-
-    if (selectedProject !== NEW_PROJECT_VALUE) {
-      return selectedProject;
+    if (!state.isCreatingProject) {
+      return state.selectedProject;
     }
 
     return normalizeProjectName(elements.newProjectInput.value);
+  }
+
+  function countEntriesForProject(projectName) {
+    return Object.keys(state.entries).reduce(function (count, dateKey) {
+      return count + entriesForDate(dateKey).filter(function (entry) {
+        return entry.project === projectName;
+      }).length;
+    }, 0);
+  }
+
+  function openDeleteProjectDialog(projectName) {
+    var entryCount = countEntriesForProject(projectName);
+
+    if (state.projects.length <= 1) {
+      showMessage(elements.entryMessage, "You must keep at least one project.", true);
+      return;
+    }
+
+    state.pendingDeleteProject = projectName;
+    elements.deleteProjectMessage.textContent =
+      "Deleting \"" +
+      projectName +
+      "\" will permanently delete " +
+      entryCount +
+      " " +
+      pluralize("entry", entryCount) +
+      " linked to this project. This cannot be undone.";
+    closeProjectPickerMenu();
+    showDialog(elements.deleteProjectDialog);
+  }
+
+  function closeDeleteProjectDialog() {
+    elements.deleteProjectDialog.close();
+    state.pendingDeleteProject = "";
+  }
+
+  async function confirmDeleteProject() {
+    var projectName = state.pendingDeleteProject;
+
+    if (!projectName) {
+      closeDeleteProjectDialog();
+      return;
+    }
+
+    state.projects = state.projects.filter(function (project) {
+      return project !== projectName;
+    });
+
+    if (state.projects.length === 0) {
+      state.projects = [DEFAULT_PROJECT];
+    }
+
+    Object.keys(state.entries).forEach(function (currentDateKey) {
+      var entries = entriesForDate(currentDateKey).filter(function (entry) {
+        return entry.project !== projectName;
+      });
+
+      if (entries.length > 0) {
+        state.entries[currentDateKey] = entries;
+      } else {
+        delete state.entries[currentDateKey];
+      }
+    });
+
+    if (state.isCreatingProject || state.selectedProject === projectName) {
+      state.isCreatingProject = false;
+      state.selectedProject = state.projects[0] || DEFAULT_PROJECT;
+    }
+
+    try {
+      await persistData();
+    } catch (error) {
+      showMessage(elements.entryMessage, "Project was removed in memory, but the data file could not be saved.", true);
+      closeDeleteProjectDialog();
+      return;
+    }
+
+    renderProjectPicker(state.selectedProject);
+    renderDayEntries(elements.entryDate.value);
+    renderMainView();
+    closeDeleteProjectDialog();
+    showMessage(elements.entryMessage, "Deleted project \"" + projectName + "\" and its entries.", false);
   }
 
   function normalizeProjectName(projectName) {
@@ -1341,7 +1517,7 @@
   function renderEntriesTable(rows) {
     return (
       '<table class="report-table">' +
-      "<thead><tr><th>Date</th><th>Check in</th><th>Check out</th><th>Hours</th><th>Project</th></tr></thead>" +
+      "<thead><tr><th>Date</th><th>Check in</th><th>Check out</th><th>Hours</th><th>Project</th><th>Description</th></tr></thead>" +
       "<tbody>" +
       rows.map(function (row) {
         return (
@@ -1355,6 +1531,8 @@
           formatHours(row.duration) +
           "</td><td>" +
           escapeHtml(row.project) +
+          "</td><td>" +
+          escapeHtml(row.description || "") +
           "</td></tr>"
         );
       }).join("") +
@@ -1412,10 +1590,10 @@
       .concat([
         [],
         ["Entries By Day"],
-        ["Date", "Check In", "Check Out", "Duration Hours", "Project"]
+        ["Date", "Check In", "Check Out", "Duration Hours", "Project", "Description"]
       ])
       .concat(rows.map(function (row) {
-        return [formatDisplayDate(parseKey(row.date)), row.checkIn, row.checkOut, formatHours(row.duration), row.project];
+        return [formatDisplayDate(parseKey(row.date)), row.checkIn, row.checkOut, formatHours(row.duration), row.project, row.description || ""];
       }));
     var csvContent = csvRows.map(function (row) {
       return row.map(escapeCsvValue).join(",");
@@ -1477,7 +1655,8 @@
       checkIn: entry.checkIn,
       checkOut: entry.checkOut,
       duration: roundHours(duration),
-      project: normalizeStoredProject(entry.project) || DEFAULT_PROJECT
+      project: normalizeStoredProject(entry.project) || DEFAULT_PROJECT,
+      description: normalizeDescription(entry.description)
     };
   }
 
@@ -1503,13 +1682,14 @@
     }, []);
   }
 
-  function createEntry(checkIn, checkOut, project, duration, existingId) {
+  function createEntry(checkIn, checkOut, project, duration, existingId, description) {
     return {
       id: existingId || createEntryId(),
       checkIn: checkIn,
       checkOut: checkOut,
       duration: roundHours(duration),
-      project: project
+      project: project,
+      description: normalizeDescription(description)
     };
   }
 
@@ -1533,6 +1713,10 @@
 
   function normalizeStoredProject(project) {
     return typeof project === "string" ? project.trim().replace(/\s+/g, " ") : "";
+  }
+
+  function normalizeDescription(description) {
+    return typeof description === "string" ? description.trim().replace(/\s+/g, " ") : "";
   }
 
   function unique(items) {
