@@ -7,7 +7,7 @@ A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It a
 1. Download or clone this repository to your computer.
 2. Double-click `MyTimesheet.html` to open it in your web browser.
 3. The app will try to load `timesheet-data.json` from the same folder automatically when your browser allows it.
-4. If it does not load automatically, click **Open data file** and choose `timesheet-data.json`. You can also click **Create data file** and save a new `timesheet-data.json`.
+4. If it does not load automatically, click **Open data file** and choose `timesheet-data.json`. You can also save an entry without selecting a file; the app will prompt you to create `timesheet-data.json`.
 5. Start entering timesheet records by clicking days on the calendar or agenda.
 
 No server, build step, or internet connection is required.
@@ -35,7 +35,7 @@ No server, build step, or internet connection is required.
 
 Timesheet data is stored in `timesheet-data.json` on your computer, not in browser site cache.
 
-Modern browsers do not allow a web page to silently write to files on your computer. The app therefore tries to read `timesheet-data.json` from the app folder, then asks you to open or create the data file if needed. In browsers that support direct local file writing, changes are saved back to that JSON file automatically after you connect it. If your browser does not support direct writing, use **Download data file** after changes to save a new JSON copy.
+Modern browsers do not allow a web page to silently write to files on your computer. The app therefore tries to read `timesheet-data.json` from the app folder, then asks you to open or create the data file if needed. If you save an entry before selecting a data file, the app shows a popup and prompts you to create `timesheet-data.json`. In browsers that support direct local file writing, changes are saved back to that JSON file automatically after you connect it. If your browser does not support direct writing, the app downloads a new JSON copy.
 
 If you select a differently named JSON file, the app warns you and lets you copy/save that data as `timesheet-data.json` so the app folder keeps a consistent data file.
 
