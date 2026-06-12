@@ -457,20 +457,14 @@
     };
   }
 
-  async function persistData(options) {
-    var skipNewFilePrompt = options && options.skipNewFilePrompt;
-
+  async function persistData() {
     updateLocalDataGlobal();
     saveDataBackup();
 
     if (isDesktopApp()) {
       if (!state.dataFilePath) {
-        if (skipNewFilePrompt) {
-          state.dataFileMode = "changed";
-          return true;
-        }
-
-        return connectDesktopDataFileWithCurrentData();
+        state.dataFileMode = "changed";
+        return true;
       }
 
       return await saveDesktopDataFile();
@@ -483,26 +477,7 @@
       return true;
     }
 
-    if (!skipNewFilePrompt && supportsSavePicker()) {
-      try {
-        await connectDataFileForAutoSave();
-        renderDataFileStatus("Saved to " + state.dataFileName + ". Future changes in this session will save automatically.");
-        return true;
-      } catch (error) {
-        if (error && error.name === "AbortError") {
-          state.dataFileMode = "changed";
-          renderDataFileStatus("Save permission was cancelled. Changes are ready; click Export data to save " + DEFAULT_DATA_FILE_NAME + ".");
-          return true;
-        }
-
-        throw error;
-      }
-    }
-
     state.dataFileMode = "changed";
-    if (!skipNewFilePrompt) {
-      renderDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.");
-    }
     return true;
   }
 
@@ -524,18 +499,6 @@
     saveDataBackup();
     renderDataFileStatus("Saved to " + state.dataFileName + ".");
     return true;
-  }
-
-  async function connectDataFileForAutoSave() {
-    var handle = await window.showSaveFilePicker({
-      suggestedName: DEFAULT_DATA_FILE_NAME,
-      types: [dataFilePickerType()]
-    });
-
-    state.dataFileHandle = handle;
-    state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
-    state.dataFileMode = "connected";
-    await writePayloadToHandle(handle);
   }
 
   async function exportDataFile() {
@@ -707,23 +670,6 @@
     return true;
   }
 
-  async function connectDesktopDataFileWithCurrentData() {
-    var result = await window.myTimesheetDesktop.exportDataFile(buildDataFilePayload());
-
-    if (!result || result.canceled) {
-      return false;
-    }
-
-    if (!result.ok) {
-      setDataFileStatus(result.error || "Could not save data file.", true);
-      return false;
-    }
-
-    await applyDesktopDataFile(result);
-    renderDataFileStatus("Saved to " + state.dataFileName + ". Changes will save automatically.");
-    return true;
-  }
-
   async function writePayloadToHandle(fileHandle, payload) {
     var writable = await fileHandle.createWritable();
 
@@ -807,7 +753,7 @@
     if (state.dataFileMode === "connected" && state.dataFileName) {
       setDataFileStatus("Connected to " + state.dataFileName + ". Changes save automatically in this session.", false);
     } else if (state.dataFileMode === "changed") {
-      setDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.", false);
+      setDataFileStatus("Changes are in memory only. Click Export data to save them to a file.", false);
     } else if (state.dataFileMode === "exported" && state.dataFileName) {
       setDataFileStatus("Saved " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.", false);
     } else {
@@ -1244,13 +1190,18 @@
 
     entries.sort(compareEntriesByTime);
     state.entries[dateKey] = entries;
-    try {
-      await persistData();
-    } catch (error) {
-      showMessage(elements.entryMessage, "Entry was updated in memory, but the data file could not be saved.", true);
-      setDataFileStatus("Could not save to " + (state.dataFileName || DEFAULT_DATA_FILE_NAME) + ". Save the generated " + DEFAULT_DATA_FILE_NAME + " beside MyTimesheet.html.", true);
+    if (!(await persistData())) {
+      showMessage(elements.entryMessage, "Entry was updated in memory, but the connected data file could not be saved.", true);
+      renderDayEntries(dateKey);
+      renderMainView();
+      showEntryListOnly(dateKey);
       return;
     }
+
+    if (state.dataFileMode === "changed") {
+      showMessage(elements.entryMessage, "Entry saved in memory. Use Export data to write changes to a file.", false);
+    }
+
     renderDayEntries(dateKey);
     renderMainView();
     showEntryListOnly(dateKey);
@@ -1280,13 +1231,14 @@
       delete state.entries[dateKey];
     }
 
-    try {
-      await persistData();
-    } catch (error) {
-      showMessage(elements.entryMessage, "Entry was deleted in memory, but the data file could not be saved.", true);
-      setDataFileStatus("Could not save to " + (state.dataFileName || DEFAULT_DATA_FILE_NAME) + ". Save the generated " + DEFAULT_DATA_FILE_NAME + " beside MyTimesheet.html.", true);
+    if (!(await persistData())) {
+      showMessage(elements.entryMessage, "Entry was deleted in memory, but the connected data file could not be saved.", true);
+      renderDayEntries(dateKey);
+      renderMainView();
+      showEntryListOnly(dateKey);
       return;
     }
+
     renderDayEntries(dateKey);
     renderMainView();
     showEntryListOnly(dateKey);
@@ -1462,18 +1414,12 @@
       state.selectedProject = state.projects[0] || "";
     }
 
-    try {
-      if (!(await persistData({ skipNewFilePrompt: true }))) {
-        showMessage(elements.entryMessage, "Project was removed in memory, but the data file could not be saved.", true);
-        closeDeleteProjectDialog();
-        renderProjectPicker(state.selectedProject);
-        renderDayEntries(elements.entryDate.value);
-        renderMainView();
-        return;
-      }
-    } catch (error) {
-      showMessage(elements.entryMessage, "Project was removed in memory, but the data file could not be saved.", true);
+    if (!(await persistData())) {
+      showMessage(elements.entryMessage, "Project was removed in memory, but the connected data file could not be saved.", true);
       closeDeleteProjectDialog();
+      renderProjectPicker(state.selectedProject);
+      renderDayEntries(elements.entryDate.value);
+      renderMainView();
       return;
     }
 
