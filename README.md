@@ -5,18 +5,9 @@ A local desktop timesheet app for macOS and Windows. It automatically switches b
 ## Run locally from source
 
 1. Download or clone this repository to your computer.
-2. Install dependencies with `npm install`.
-3. Start the desktop app with `npm start`.
-4. Use **Open data file** to select an existing data file, or **Create data file** to create one.
-5. Start entering timesheet records by clicking days on the calendar or agenda.
-
-## Build desktop installers
-
-- Build Windows artifacts: `npm run dist:win`
-- Build macOS artifacts: `npm run dist:mac`
-- Build unpacked app for the current platform: `npm run pack`
-
-Build outputs are written to `dist/`.
+2. Click "MyTimesheet.html" to start.
+3. Use **Open data file** to select an existing data file, or **Create data file** to create one.
+4. Start entering timesheet records by clicking days on the calendar or agenda.
 
 ## Features
 
