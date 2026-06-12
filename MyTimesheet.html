@@ -17,6 +17,19 @@
         <button class="primary-button" id="openReportButton" type="button">Report</button>
       </header>
 
+      <section class="data-card" aria-label="Local data file">
+        <div>
+          <p class="eyebrow">Data file</p>
+          <h2>Desktop data file</h2>
+          <p id="dataFileStatus" class="data-file-status">Open or create a data file. The desktop app remembers it and saves future entries there.</p>
+        </div>
+        <div class="data-actions">
+          <button class="secondary-button" id="openDataFileButton" type="button">Open data file</button>
+          <button class="secondary-button" id="createDataFileButton" type="button">Create data file</button>
+          <button class="secondary-button" id="exportDataButton" type="button">Export data</button>
+        </div>
+      </section>
+
       <main class="calendar-card" aria-labelledby="calendarTitle">
         <div class="calendar-toolbar">
           <button class="icon-button" id="previousMonthButton" type="button" aria-label="Previous month">&lsaquo;</button>
@@ -28,8 +41,9 @@
         </div>
         <div class="toolbar-actions">
           <button class="secondary-button" id="todayButton" type="button">Today</button>
-          <div class="view-toggle" aria-label="Timesheet view">
-            <button class="toggle-button is-active" id="calendarViewButton" type="button">Calendar</button>
+          <div class="view-toggle" aria-label="Timesheet view mode">
+            <button class="toggle-button is-active" id="autoViewButton" type="button">Auto</button>
+            <button class="toggle-button" id="calendarViewButton" type="button">Calendar</button>
             <button class="toggle-button" id="agendaViewButton" type="button">Agenda</button>
           </div>
         </div>
@@ -44,11 +58,12 @@
       <section class="help-card" aria-label="Usage notes">
         <h2>How it works</h2>
         <ul>
-          <li>Switch between calendar and agenda views for the same monthly records.</li>
+          <li>Use Auto for responsive calendar/agenda switching, or choose Calendar or Agenda manually.</li>
+          <li>Calendar days show only entry count and total hours; click a day to see details.</li>
           <li>Click a day to add several check in, check out, and project entries.</li>
           <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
           <li>Use Report to see project totals for a period and export the detailed CSV.</li>
-          <li>Data is stored locally in this browser on this computer using HTML5 localStorage.</li>
+          <li>Data is stored in timesheet-data.js in this folder, not in browser site cache.</li>
         </ul>
       </section>
     </div>
@@ -69,45 +84,47 @@
         <section class="day-entry-list" id="dayEntriesSection">
           <div class="section-heading">
             <h3>Entries for this day</h3>
-            <button class="secondary-button compact-button" id="newEntryButton" type="button">Add another entry</button>
+            <button class="secondary-button compact-button" id="newEntryButton" type="button">Add new entry</button>
           </div>
           <div id="dayEntriesList"></div>
         </section>
 
-        <label class="field">
-          <span>Check in <small>(24-hour format)</small></span>
-          <input id="checkInInput" type="time" required>
-        </label>
+        <section class="entry-editor hidden" id="entryEditor">
+          <label class="field">
+            <span>Check in <small>(24-hour format)</small></span>
+            <input id="checkInInput" type="time" required>
+          </label>
 
-        <label class="field">
-          <span>Check out <small>(24-hour format)</small></span>
-          <input id="checkOutInput" type="time" required>
-        </label>
+          <label class="field">
+            <span>Check out <small>(24-hour format)</small></span>
+            <input id="checkOutInput" type="time" required>
+          </label>
 
-        <label class="field">
-          <span>Duration</span>
-          <input id="durationInput" type="text" readonly value="0.00 hours">
-        </label>
+          <label class="field">
+            <span>Duration</span>
+            <input id="durationInput" type="text" readonly value="0.00 hours">
+          </label>
 
-        <label class="field">
-          <span>Project</span>
-          <select id="projectSelect" required></select>
-        </label>
+          <label class="field">
+            <span>Project</span>
+            <select id="projectSelect" required></select>
+          </label>
 
-        <label class="field hidden" id="newProjectField">
-          <span>New project name</span>
-          <input id="newProjectInput" type="text" maxlength="80" placeholder="e.g. Website redesign">
-        </label>
+          <label class="field hidden" id="newProjectField">
+            <span>New project name</span>
+            <input id="newProjectInput" type="text" maxlength="80" placeholder="e.g. Website redesign">
+          </label>
 
-        <p class="form-message" id="entryMessage" role="status"></p>
+          <p class="form-message" id="entryMessage" role="status"></p>
 
-        <div class="modal-actions split-actions">
-          <button class="danger-button" id="deleteEntryButton" type="button">Delete entry</button>
-          <div>
-            <button class="secondary-button" id="cancelEntryButton" type="button">Cancel</button>
-            <button class="primary-button" type="submit">Save entry</button>
+          <div class="modal-actions split-actions">
+            <button class="danger-button" id="deleteEntryButton" type="button">Delete entry</button>
+            <div>
+              <button class="secondary-button" id="cancelEntryButton" type="button">Cancel</button>
+              <button class="primary-button" type="submit">Save entry</button>
+            </div>
           </div>
-        </div>
+        </section>
       </form>
     </dialog>
 
@@ -158,6 +175,7 @@
       </form>
     </dialog>
 
+    <script src="timesheet-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

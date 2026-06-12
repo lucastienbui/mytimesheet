@@ -1,10 +1,12 @@
 (function () {
   "use strict";
 
-  var ENTRY_STORAGE_KEY = "local-timesheet.entries.v1";
-  var PROJECT_STORAGE_KEY = "local-timesheet.projects.v1";
+  var DATA_FILE_VERSION = 1;
+  var DEFAULT_DATA_FILE_NAME = "timesheet-data.js";
+  var DATA_GLOBAL_NAME = "MY_TIMESHEET_DATA";
   var NEW_PROJECT_VALUE = "__new_project__";
   var DEFAULT_PROJECT = "General";
+  var VIEW_AUTO = "auto";
   var VIEW_CALENDAR = "calendar";
   var VIEW_AGENDA = "agenda";
   var weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -21,12 +23,16 @@
     month: "short"
   });
 
-  var storedEntries = loadEntries();
   var state = {
     viewedDate: startOfMonth(new Date()),
-    viewMode: VIEW_CALENDAR,
-    entries: storedEntries,
-    projects: loadProjects(storedEntries)
+    viewPreference: VIEW_AUTO,
+    viewMode: getSelectedViewMode(VIEW_AUTO),
+    entries: {},
+    projects: normalizeProjects([], {}),
+    dataFileHandle: null,
+    dataFilePath: "",
+    dataFileName: DEFAULT_DATA_FILE_NAME,
+    dataFileMode: "memory"
   };
 
   var elements = {
@@ -39,8 +45,13 @@
     previousMonthButton: document.getElementById("previousMonthButton"),
     nextMonthButton: document.getElementById("nextMonthButton"),
     todayButton: document.getElementById("todayButton"),
+    autoViewButton: document.getElementById("autoViewButton"),
     calendarViewButton: document.getElementById("calendarViewButton"),
     agendaViewButton: document.getElementById("agendaViewButton"),
+    dataFileStatus: document.getElementById("dataFileStatus"),
+    openDataFileButton: document.getElementById("openDataFileButton"),
+    createDataFileButton: document.getElementById("createDataFileButton"),
+    exportDataButton: document.getElementById("exportDataButton"),
     openReportButton: document.getElementById("openReportButton"),
     entryDialog: document.getElementById("entryDialog"),
     entryForm: document.getElementById("entryForm"),
@@ -51,6 +62,7 @@
     newEntryButton: document.getElementById("newEntryButton"),
     dayEntriesSection: document.getElementById("dayEntriesSection"),
     dayEntriesList: document.getElementById("dayEntriesList"),
+    entryEditor: document.getElementById("entryEditor"),
     entryDate: document.getElementById("entryDate"),
     entryIndex: document.getElementById("entryIndex"),
     checkInInput: document.getElementById("checkInInput"),
@@ -78,9 +90,13 @@
   initialize();
 
   function initialize() {
+    loadLocalDataFile();
+    renderDataFileStatus();
     renderWeekdays();
     renderMainView();
     bindEvents();
+    bindResponsiveViewMode();
+    restoreRecentDesktopDataFile();
   }
 
   function bindEvents() {
@@ -99,21 +115,31 @@
       renderMainView();
     });
 
+    elements.autoViewButton.addEventListener("click", function () {
+      setViewPreference(VIEW_AUTO);
+    });
+
     elements.calendarViewButton.addEventListener("click", function () {
-      setViewMode(VIEW_CALENDAR);
+      setViewPreference(VIEW_CALENDAR);
     });
 
     elements.agendaViewButton.addEventListener("click", function () {
-      setViewMode(VIEW_AGENDA);
+      setViewPreference(VIEW_AGENDA);
     });
 
+    elements.openDataFileButton.addEventListener("click", openDesktopDataFile);
+    elements.createDataFileButton.addEventListener("click", createDesktopDataFile);
+    elements.exportDataButton.addEventListener("click", exportDataFile);
     elements.openReportButton.addEventListener("click", openReportDialog);
     elements.closeEntryButton.addEventListener("click", closeEntryDialog);
-    elements.cancelEntryButton.addEventListener("click", closeEntryDialog);
+    elements.cancelEntryButton.addEventListener("click", function () {
+      showEntryListOnly(elements.entryDate.value);
+    });
     elements.closeExportButton.addEventListener("click", closeReportDialog);
     elements.cancelExportButton.addEventListener("click", closeReportDialog);
     elements.newEntryButton.addEventListener("click", function () {
       resetEntryForm(elements.entryDate.value);
+      elements.checkInInput.focus();
     });
 
     elements.checkInInput.addEventListener("input", updateDurationPreview);
@@ -149,9 +175,562 @@
     });
   }
 
-  function setViewMode(viewMode) {
-    state.viewMode = viewMode;
+  function loadLocalDataFile() {
+    var localData = typeof window !== "undefined" ? window[DATA_GLOBAL_NAME] : null;
+
+    if (!localData) {
+      renderDataFileStatus("No " + DEFAULT_DATA_FILE_NAME + " data was found. A blank timesheet is ready.");
+      return;
+    }
+
+    try {
+      applyDataFileData(localData);
+      state.dataFileName = DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = "loaded";
+    } catch (error) {
+      setDataFileStatus(DEFAULT_DATA_FILE_NAME + " could not be read. A blank timesheet is ready.", true);
+    }
+  }
+
+  async function restoreRecentDesktopDataFile() {
+    var result;
+
+    if (!isDesktopApp()) {
+      return;
+    }
+
+    result = await window.myTimesheetDesktop.loadRecentDataFile();
+
+    if (!result || !result.ok) {
+      renderDataFileStatus();
+      return;
+    }
+
+    applyDesktopDataFile(result);
+    renderDataFileStatus("Reopened " + state.dataFileName + ". Changes will save automatically.");
+  }
+
+  async function openDesktopDataFile() {
+    var result;
+
+    if (!isDesktopApp()) {
+      await openBrowserDataFile();
+      return;
+    }
+
+    result = await window.myTimesheetDesktop.openDataFile();
+
+    if (!result || result.canceled) {
+      return;
+    }
+
+    if (!result.ok) {
+      setDataFileStatus(result.error || "Could not open data file.", true);
+      return;
+    }
+
+    applyDesktopDataFile(result);
+    renderDataFileStatus("Opened " + state.dataFileName + ". Changes will save automatically.");
+  }
+
+  async function createDesktopDataFile() {
+    var result;
+    var blankPayload = buildBlankDataFilePayload();
+
+    applyDataFileData(blankPayload);
+    updateLocalDataGlobal();
+
+    if (!isDesktopApp()) {
+      return createBrowserDataFile(blankPayload);
+    }
+
+    result = await window.myTimesheetDesktop.createDataFile(blankPayload);
+
+    if (!result || result.canceled) {
+      return false;
+    }
+
+    if (!result.ok) {
+      setDataFileStatus(result.error || "Could not create data file.", true);
+      return false;
+    }
+
+    applyDesktopDataFile(result);
+    renderDataFileStatus("Created " + state.dataFileName + ". Changes will save automatically.");
+    return true;
+  }
+
+  function applyDesktopDataFile(result) {
+    applyDataFileData(result.data);
+    updateLocalDataGlobal();
+    state.dataFilePath = result.filePath || "";
+    state.dataFileName = result.fileName || DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "connected";
+    renderAfterDataChange();
+  }
+
+  function applyDataFileData(rawData) {
+    var data = normalizeDataFile(rawData);
+
+    state.entries = data.entries;
+    state.projects = data.projects;
+  }
+
+  function normalizeDataFile(data) {
+    var entriesSource;
+    var projectsSource;
+    var entries;
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Invalid data file");
+    }
+
+    entriesSource = data.entries && typeof data.entries === "object" ? data.entries : data;
+    projectsSource = Array.isArray(data.projects) ? data.projects : [];
+    entries = normalizeEntries(entriesSource);
+
+    return {
+      entries: entries,
+      projects: normalizeProjects(projectsSource, entries)
+    };
+  }
+
+  async function persistData() {
+    updateLocalDataGlobal();
+
+    if (isDesktopApp()) {
+      if (!state.dataFilePath) {
+        return connectDesktopDataFileWithCurrentData();
+      }
+
+      await saveDesktopDataFile();
+      return true;
+    }
+
+    if (state.dataFileHandle) {
+      await writePayloadToHandle(state.dataFileHandle);
+      state.dataFileMode = "connected";
+      renderDataFileStatus("Saved to " + state.dataFileName + ".");
+      return true;
+    }
+
+    if (supportsSavePicker()) {
+      try {
+        await connectDataFileForAutoSave();
+        renderDataFileStatus("Saved to " + state.dataFileName + ". Future changes in this session will save automatically.");
+        return true;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          state.dataFileMode = "changed";
+          renderDataFileStatus("Save permission was cancelled. Changes are ready; click Export data to save " + DEFAULT_DATA_FILE_NAME + ".");
+          return true;
+        }
+
+        throw error;
+      }
+    }
+
+    state.dataFileMode = "changed";
+    renderDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.");
+    return true;
+  }
+
+  async function saveDesktopDataFile() {
+    var result = await window.myTimesheetDesktop.saveDataFile({
+      filePath: state.dataFilePath,
+      payload: buildDataFilePayload()
+    });
+
+    if (!result || !result.ok) {
+      setDataFileStatus(result && result.error ? result.error : "Could not save data file.", true);
+      return false;
+    }
+
+    state.dataFilePath = result.filePath || state.dataFilePath;
+    state.dataFileName = result.fileName || state.dataFileName;
+    state.dataFileMode = "connected";
+    renderDataFileStatus("Saved to " + state.dataFileName + ".");
+    return true;
+  }
+
+  async function connectDataFileForAutoSave() {
+    var handle = await window.showSaveFilePicker({
+      suggestedName: DEFAULT_DATA_FILE_NAME,
+      types: [dataFilePickerType()]
+    });
+
+    state.dataFileHandle = handle;
+    state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "connected";
+    await writePayloadToHandle(handle);
+  }
+
+  async function exportDataFile() {
+    var handle;
+    var result;
+
+    updateLocalDataGlobal();
+
+    if (isDesktopApp()) {
+      result = await window.myTimesheetDesktop.exportDataFile(buildDataFilePayload());
+
+      if (!result || result.canceled) {
+        return;
+      }
+
+      if (!result.ok) {
+        setDataFileStatus(result.error || "Could not export data file.", true);
+        return;
+      }
+
+      applyDesktopDataFile(result);
+      renderDataFileStatus("Exported " + state.dataFileName + ". Changes will save automatically.");
+      return;
+    }
+
+    if (supportsSavePicker()) {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: DEFAULT_DATA_FILE_NAME,
+          types: [dataFilePickerType()]
+        });
+        await writePayloadToHandle(handle);
+        state.dataFileHandle = handle;
+        state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+        state.dataFileMode = "connected";
+        renderDataFileStatus("Exported " + state.dataFileName + ". Future changes in this session will save automatically.");
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+
+        setDataFileStatus("Could not export " + DEFAULT_DATA_FILE_NAME + ". A download will be attempted instead.", true);
+      }
+    }
+
+    downloadDataFile(DEFAULT_DATA_FILE_NAME);
+    state.dataFileName = DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "exported";
+    renderDataFileStatus("Downloaded " + DEFAULT_DATA_FILE_NAME + ". Replace the local file beside MyTimesheet.html with this copy.");
+  }
+
+  function updateLocalDataGlobal() {
+    if (typeof window !== "undefined") {
+      window[DATA_GLOBAL_NAME] = buildDataFilePayload();
+    }
+  }
+
+  function isDesktopApp() {
+    return Boolean(window.myTimesheetDesktop && window.myTimesheetDesktop.isDesktop);
+  }
+
+  async function openBrowserDataFile() {
+    var handles;
+    var file;
+    var content;
+
+    if (supportsOpenPicker()) {
+      try {
+        handles = await window.showOpenFilePicker({
+          types: [dataFilePickerType()],
+          multiple: false
+        });
+        file = await handles[0].getFile();
+        content = await file.text();
+        applyDataFileData(parseDataFileContent(content));
+        state.dataFileHandle = handles[0];
+        state.dataFilePath = "";
+        state.dataFileName = handles[0].name || DEFAULT_DATA_FILE_NAME;
+        state.dataFileMode = "connected";
+        updateLocalDataGlobal();
+        renderAfterDataChange();
+        renderDataFileStatus("Opened " + state.dataFileName + ". Changes will save automatically.");
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+
+        setDataFileStatus("Could not open data file.", true);
+        return;
+      }
+    }
+
+    await openBrowserDataFileWithInput();
+  }
+
+  function openBrowserDataFileWithInput() {
+    return new Promise(function (resolve) {
+      var input = ensureDataFileInput();
+
+      input.onchange = async function () {
+        var file = input.files && input.files[0];
+        input.value = "";
+
+        if (!file) {
+          resolve();
+          return;
+        }
+
+        try {
+          applyDataFileData(parseDataFileContent(await file.text()));
+          state.dataFileHandle = null;
+          state.dataFilePath = "";
+          state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
+          state.dataFileMode = "loaded";
+          updateLocalDataGlobal();
+          renderAfterDataChange();
+          renderDataFileStatus("Opened " + state.dataFileName + ". Click Export data to save changes to a file.");
+        } catch (error) {
+          setDataFileStatus("Could not open data file.", true);
+        }
+
+        resolve();
+      };
+
+      input.click();
+    });
+  }
+
+  async function createBrowserDataFile(blankPayload) {
+    var handle;
+
+    if (supportsSavePicker()) {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: DEFAULT_DATA_FILE_NAME,
+          types: [dataFilePickerType()]
+        });
+        await writePayloadToHandle(handle, blankPayload);
+        state.dataFileHandle = handle;
+        state.dataFilePath = "";
+        state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+        state.dataFileMode = "connected";
+        renderAfterDataChange();
+        renderDataFileStatus("Created " + state.dataFileName + ". Changes will save automatically.");
+        return true;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return false;
+        }
+
+        setDataFileStatus("Could not create data file.", true);
+        return false;
+      }
+    }
+
+    downloadDataFile(DEFAULT_DATA_FILE_NAME, blankPayload);
+    state.dataFileHandle = null;
+    state.dataFilePath = "";
+    state.dataFileName = DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "exported";
+    renderAfterDataChange();
+    renderDataFileStatus("Created " + DEFAULT_DATA_FILE_NAME + ". Keep it beside MyTimesheet.html so it can be opened next time.");
+    return true;
+  }
+
+  async function connectDesktopDataFileWithCurrentData() {
+    var result = await window.myTimesheetDesktop.exportDataFile(buildDataFilePayload());
+
+    if (!result || result.canceled) {
+      return false;
+    }
+
+    if (!result.ok) {
+      setDataFileStatus(result.error || "Could not save data file.", true);
+      return false;
+    }
+
+    applyDesktopDataFile(result);
+    renderDataFileStatus("Saved to " + state.dataFileName + ". Changes will save automatically.");
+    return true;
+  }
+
+  async function writePayloadToHandle(fileHandle, payload) {
+    var writable = await fileHandle.createWritable();
+
+    await writable.write(buildDataFileContent(payload));
+    await writable.close();
+  }
+
+  function downloadDataFile(fileName, payload) {
+    var blob = new Blob([buildDataFileContent(payload)], { type: "application/javascript;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName || state.dataFileName || DEFAULT_DATA_FILE_NAME;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildDataFilePayload() {
+    return {
+      version: DATA_FILE_VERSION,
+      updatedAt: new Date().toISOString(),
+      entries: state.entries,
+      projects: state.projects
+    };
+  }
+
+  function buildBlankDataFilePayload() {
+    return {
+      version: DATA_FILE_VERSION,
+      updatedAt: null,
+      entries: {},
+      projects: [DEFAULT_PROJECT]
+    };
+  }
+
+  function buildDataFileContent(payload) {
+    var data = payload || buildDataFilePayload();
+
+    return "window." + DATA_GLOBAL_NAME + " = " + JSON.stringify(data, null, 2) + ";\n";
+  }
+
+  function parseDataFileContent(content) {
+    var trimmed = (content || "").trim();
+    var assignmentPattern;
+    var match;
+
+    if (!trimmed) {
+      return buildBlankDataFilePayload();
+    }
+
+    if (trimmed.charAt(0) === "{") {
+      return JSON.parse(trimmed);
+    }
+
+    assignmentPattern = new RegExp(
+      "^\\s*(?:window\\.)?" + DATA_GLOBAL_NAME + "\\s*=\\s*([\\s\\S]*?)\\s*;?\\s*$"
+    );
+    match = assignmentPattern.exec(trimmed);
+
+    if (!match) {
+      throw new Error("Data file must define window." + DATA_GLOBAL_NAME + ".");
+    }
+
+    return JSON.parse(match[1]);
+  }
+
+  function renderAfterDataChange() {
+    state.projects = normalizeProjects(state.projects, state.entries);
     renderMainView();
+  }
+
+  function renderDataFileStatus(message) {
+    if (message) {
+      setDataFileStatus(message, false);
+      return;
+    }
+
+    if (state.dataFileMode === "connected" && state.dataFileName) {
+      setDataFileStatus("Connected to " + state.dataFileName + ". Changes save automatically in this session.", false);
+    } else if (state.dataFileMode === "changed") {
+      setDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.", false);
+    } else if (state.dataFileMode === "exported" && state.dataFileName) {
+      setDataFileStatus("Saved " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.", false);
+    } else {
+      setDataFileStatus("Using " + DEFAULT_DATA_FILE_NAME + " from this folder. Save an entry to update that file.", false);
+    }
+  }
+
+  function setDataFileStatus(message, isError) {
+    elements.dataFileStatus.textContent = message;
+    elements.dataFileStatus.classList.toggle("error", Boolean(isError));
+  }
+
+  function supportsSavePicker() {
+    return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+  }
+
+  function supportsOpenPicker() {
+    return typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+  }
+
+  function ensureDataFileInput() {
+    var input = document.getElementById("dataFileInput");
+
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "file";
+      input.id = "dataFileInput";
+      input.accept = ".js,application/javascript,text/javascript";
+      input.hidden = true;
+      document.body.appendChild(input);
+    }
+
+    return input;
+  }
+
+  function dataFilePickerType() {
+    return {
+      description: "Timesheet JavaScript data",
+      accept: {
+        "application/javascript": [".js"],
+        "text/javascript": [".js"]
+      }
+    };
+  }
+
+  function bindResponsiveViewMode() {
+    var mediaQuery;
+
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    mediaQuery = window.matchMedia("(max-width: 760px)");
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncResponsiveViewMode);
+    } else if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(syncResponsiveViewMode);
+    }
+
+    syncResponsiveViewMode();
+  }
+
+  function syncResponsiveViewMode() {
+    if (state.viewPreference !== VIEW_AUTO) {
+      return;
+    }
+
+    setViewMode(getResponsiveViewMode());
+  }
+
+  function setViewPreference(viewPreference) {
+    state.viewPreference = viewPreference;
+    setViewMode(getSelectedViewMode(viewPreference));
+  }
+
+  function setViewMode(nextViewMode) {
+    if (state.viewMode === nextViewMode) {
+      renderViewControls();
+      return;
+    }
+
+    state.viewMode = nextViewMode;
+    renderMainView();
+  }
+
+  function getResponsiveViewMode() {
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches) {
+      return VIEW_AGENDA;
+    }
+
+    return VIEW_CALENDAR;
+  }
+
+  function getSelectedViewMode(viewPreference) {
+    if (viewPreference === VIEW_CALENDAR || viewPreference === VIEW_AGENDA) {
+      return viewPreference;
+    }
+
+    return getResponsiveViewMode();
   }
 
   function renderMainView() {
@@ -166,14 +745,19 @@
     elements.monthSummary.textContent = monthlyEntries.length + " " + pluralize("entry", monthlyEntries.length) + " · " + formatHours(monthlyHours) + " hours";
     elements.calendarView.classList.toggle("hidden", state.viewMode !== VIEW_CALENDAR);
     elements.agendaView.classList.toggle("hidden", state.viewMode !== VIEW_AGENDA);
-    elements.calendarViewButton.classList.toggle("is-active", state.viewMode === VIEW_CALENDAR);
-    elements.agendaViewButton.classList.toggle("is-active", state.viewMode === VIEW_AGENDA);
+    renderViewControls();
 
     if (state.viewMode === VIEW_CALENDAR) {
       renderCalendar();
     } else {
       renderAgenda();
     }
+  }
+
+  function renderViewControls() {
+    elements.autoViewButton.classList.toggle("is-active", state.viewPreference === VIEW_AUTO);
+    elements.calendarViewButton.classList.toggle("is-active", state.viewPreference === VIEW_CALENDAR);
+    elements.agendaViewButton.classList.toggle("is-active", state.viewPreference === VIEW_AGENDA);
   }
 
   function renderCalendar() {
@@ -222,13 +806,8 @@
   }
 
   function renderDayPreview(entries) {
-    var previewEntries = entries.slice(0, 2).map(function (entry) {
-      return escapeHtml(entry.checkIn) + " - " + escapeHtml(entry.checkOut) + " · " + escapeHtml(entry.project);
-    });
-    var extraCount = entries.length - previewEntries.length;
-
     if (entries.length === 0) {
-      return '<div class="entry-preview">No entry yet</div>';
+      return "";
     }
 
     return (
@@ -239,9 +818,7 @@
       pluralize("entry", entries.length) +
       " · " +
       formatHours(sumHours(entries)) +
-      " hours</span><br>" +
-      previewEntries.join("<br>") +
-      (extraCount > 0 ? "<br>+" + extraCount + " more" : "") +
+      " hours</span>" +
       "</div>"
     );
   }
@@ -250,6 +827,7 @@
     var year = state.viewedDate.getFullYear();
     var month = state.viewedDate.getMonth();
     var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var defaultDay = getAgendaDefaultDay(year, month);
 
     elements.agendaView.innerHTML = "";
 
@@ -261,7 +839,8 @@
       var details = document.createElement("div");
       var openButton = document.createElement("button");
 
-      row.className = "agenda-day" + (entries.length > 0 ? " has-entry" : "");
+      row.className = "agenda-day" + (entries.length > 0 ? " has-entry" : "") + (day === defaultDay ? " is-agenda-scroll-target" : "");
+      row.setAttribute("data-date", dateKey);
       row.innerHTML =
         '<div class="agenda-date">' +
         escapeHtml(shortDateFormatter.format(date)) +
@@ -281,17 +860,46 @@
             return escapeHtml(entry.checkIn) + " - " + escapeHtml(entry.checkOut) + " · " + escapeHtml(entry.project);
           }).join("<br>");
       } else {
-        details.textContent = "No entry yet";
+        details.textContent = "";
       }
 
       openButton.className = "secondary-button compact-button";
       openButton.type = "button";
-      openButton.textContent = entries.length > 0 ? "Open" : "Add";
+      openButton.textContent = "Open";
       openButton.addEventListener("click", openEntryDialog.bind(null, dateKey, null));
 
       row.appendChild(details);
       row.appendChild(openButton);
       elements.agendaView.appendChild(row);
+    }
+
+    scrollAgendaToDefaultDay(defaultDay);
+  }
+
+  function getAgendaDefaultDay(year, month) {
+    var today = new Date();
+
+    if (today.getFullYear() === year && today.getMonth() === month) {
+      return today.getDate();
+    }
+
+    return 1;
+  }
+
+  function scrollAgendaToDefaultDay(day) {
+    var targetRow = elements.agendaView.children[day - 1];
+
+    if (!targetRow) {
+      return;
+    }
+
+    if (typeof targetRow.scrollIntoView === "function") {
+      targetRow.scrollIntoView({ block: "start" });
+      return;
+    }
+
+    if (typeof targetRow.offsetTop === "number") {
+      elements.agendaView.scrollTop = targetRow.offsetTop;
     }
   }
 
@@ -301,17 +909,31 @@
     renderDayEntries(dateKey);
 
     if (entryIndex === null || entryIndex === undefined) {
-      resetEntryForm(dateKey);
+      showEntryListOnly(dateKey);
     } else {
       loadEntryIntoForm(dateKey, entryIndex);
     }
 
     showDialog(elements.entryDialog);
-    elements.checkInInput.focus();
+    if (entryIndex !== null && entryIndex !== undefined) {
+      elements.checkInInput.focus();
+    }
   }
 
   function closeEntryDialog() {
     elements.entryDialog.close();
+  }
+
+  function showEntryListOnly(dateKey) {
+    elements.entryForm.reset();
+    clearMessage(elements.entryMessage);
+    elements.entryDate.value = dateKey;
+    elements.entryIndex.value = "";
+    elements.entryDialogTitle.textContent = "Entries for " + formatDisplayDate(parseKey(dateKey));
+    elements.entryEditor.classList.add("hidden");
+    elements.newProjectField.classList.add("hidden");
+    elements.newProjectInput.required = false;
+    elements.deleteEntryButton.classList.add("hidden");
   }
 
   function resetEntryForm(dateKey) {
@@ -320,6 +942,7 @@
     elements.entryDate.value = dateKey;
     elements.entryIndex.value = "";
     elements.entryDialogTitle.textContent = "Add entry for " + formatDisplayDate(parseKey(dateKey));
+    elements.entryEditor.classList.remove("hidden");
     renderProjectOptions("");
     elements.deleteEntryButton.classList.add("hidden");
     updateDurationPreview();
@@ -339,6 +962,7 @@
     elements.entryDate.value = dateKey;
     elements.entryIndex.value = String(entryIndex);
     elements.entryDialogTitle.textContent = "Edit entry for " + formatDisplayDate(parseKey(dateKey));
+    elements.entryEditor.classList.remove("hidden");
     renderProjectOptions(entry.project);
     elements.checkInInput.value = entry.checkIn;
     elements.checkOutInput.value = entry.checkOut;
@@ -400,7 +1024,7 @@
     });
   }
 
-  function saveEntry(event) {
+  async function saveEntry(event) {
     event.preventDefault();
     clearMessage(elements.entryMessage);
 
@@ -425,7 +1049,6 @@
     if (state.projects.indexOf(project) === -1) {
       state.projects.push(project);
       state.projects.sort(caseInsensitiveSort);
-      saveProjects();
     }
 
     entries = entriesForDate(dateKey).slice();
@@ -438,11 +1061,16 @@
 
     entries.sort(compareEntriesByTime);
     state.entries[dateKey] = entries;
-    saveEntries();
+    try {
+      await persistData();
+    } catch (error) {
+      showMessage(elements.entryMessage, "Entry was updated in memory, but the data file could not be saved.", true);
+      setDataFileStatus("Could not save to " + (state.dataFileName || DEFAULT_DATA_FILE_NAME) + ". Save the generated " + DEFAULT_DATA_FILE_NAME + " beside MyTimesheet.html.", true);
+      return;
+    }
     renderDayEntries(dateKey);
     renderMainView();
-    resetEntryForm(dateKey);
-    showMessage(elements.entryMessage, "Entry saved.", false);
+    showEntryListOnly(dateKey);
   }
 
   function deleteSelectedEntry() {
@@ -454,7 +1082,7 @@
     }
   }
 
-  function deleteEntryByIndex(dateKey, entryIndex) {
+  async function deleteEntryByIndex(dateKey, entryIndex) {
     var entries = entriesForDate(dateKey).slice();
 
     if (!entries[entryIndex]) {
@@ -469,11 +1097,16 @@
       delete state.entries[dateKey];
     }
 
-    saveEntries();
+    try {
+      await persistData();
+    } catch (error) {
+      showMessage(elements.entryMessage, "Entry was deleted in memory, but the data file could not be saved.", true);
+      setDataFileStatus("Could not save to " + (state.dataFileName || DEFAULT_DATA_FILE_NAME) + ". Save the generated " + DEFAULT_DATA_FILE_NAME + " beside MyTimesheet.html.", true);
+      return;
+    }
     renderDayEntries(dateKey);
     renderMainView();
-    resetEntryForm(dateKey);
-    showMessage(elements.entryMessage, "Entry deleted.", false);
+    showEntryListOnly(dateKey);
   }
 
   function renderProjectOptions(selectedProject) {
@@ -800,8 +1433,7 @@
     URL.revokeObjectURL(url);
   }
 
-  function loadEntries() {
-    var stored = safeJsonParse(localStorage.getItem(ENTRY_STORAGE_KEY), {});
+  function normalizeEntries(stored) {
     var normalized = {};
 
     if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
@@ -849,13 +1481,8 @@
     };
   }
 
-  function saveEntries() {
-    localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(state.entries));
-  }
-
-  function loadProjects(entries) {
-    var stored = safeJsonParse(localStorage.getItem(PROJECT_STORAGE_KEY), null);
-    var projects = (Array.isArray(stored) ? stored : []).concat(projectsFromEntries(entries));
+  function normalizeProjects(projectList, entries) {
+    var projects = (Array.isArray(projectList) ? projectList : []).concat(projectsFromEntries(entries));
     var normalized = projects.map(function (project) {
       return normalizeStoredProject(project);
     }).filter(Boolean);
@@ -874,10 +1501,6 @@
       });
       return projects;
     }, []);
-  }
-
-  function saveProjects() {
-    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(state.projects));
   }
 
   function createEntry(checkIn, checkOut, project, duration, existingId) {
@@ -906,14 +1529,6 @@
     return entries.reduce(function (total, entry) {
       return total + Number(entry.duration || 0);
     }, 0);
-  }
-
-  function safeJsonParse(value, fallback) {
-    try {
-      return JSON.parse(value);
-    } catch (error) {
-      return fallback;
-    }
   }
 
   function normalizeStoredProject(project) {
@@ -995,7 +1610,15 @@
   }
 
   function pluralize(word, count) {
-    return count === 1 ? word : word + "s";
+    if (count === 1) {
+      return word;
+    }
+
+    if (/[^aeiou]y$/i.test(word)) {
+      return word.slice(0, -1) + "ies";
+    }
+
+    return word + "s";
   }
 
   function escapeCsvValue(value) {
