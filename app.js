@@ -29,6 +29,7 @@
     viewMode: getSelectedViewMode(VIEW_AUTO),
     entries: {},
     projects: normalizeProjects([], {}),
+    dataFileHandle: null,
     dataFileName: DEFAULT_DATA_FILE_NAME,
     dataFileMode: "memory"
   };
@@ -213,9 +214,45 @@
 
   async function persistData() {
     updateLocalDataGlobal();
+
+    if (state.dataFileHandle) {
+      await writePayloadToHandle(state.dataFileHandle);
+      state.dataFileMode = "connected";
+      renderDataFileStatus("Saved to " + state.dataFileName + ".");
+      return true;
+    }
+
+    if (supportsSavePicker()) {
+      try {
+        await connectDataFileForAutoSave();
+        renderDataFileStatus("Saved to " + state.dataFileName + ". Future changes in this session will save automatically.");
+        return true;
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          state.dataFileMode = "changed";
+          renderDataFileStatus("Save permission was cancelled. Changes are ready; click Export data to save " + DEFAULT_DATA_FILE_NAME + ".");
+          return true;
+        }
+
+        throw error;
+      }
+    }
+
     state.dataFileMode = "changed";
     renderDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.");
     return true;
+  }
+
+  async function connectDataFileForAutoSave() {
+    var handle = await window.showSaveFilePicker({
+      suggestedName: DEFAULT_DATA_FILE_NAME,
+      types: [dataFilePickerType()]
+    });
+
+    state.dataFileHandle = handle;
+    state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "connected";
+    await writePayloadToHandle(handle);
   }
 
   async function exportDataFile() {
@@ -230,9 +267,10 @@
           types: [dataFilePickerType()]
         });
         await writePayloadToHandle(handle);
+        state.dataFileHandle = handle;
         state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
-        state.dataFileMode = "exported";
-        renderDataFileStatus("Exported " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.");
+        state.dataFileMode = "connected";
+        renderDataFileStatus("Exported " + state.dataFileName + ". Future changes in this session will save automatically.");
         return;
       } catch (error) {
         if (error && error.name === "AbortError") {
@@ -299,7 +337,9 @@
       return;
     }
 
-    if (state.dataFileMode === "changed") {
+    if (state.dataFileMode === "connected" && state.dataFileName) {
+      setDataFileStatus("Connected to " + state.dataFileName + ". Changes save automatically in this session.", false);
+    } else if (state.dataFileMode === "changed") {
       setDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.", false);
     } else if (state.dataFileMode === "exported" && state.dataFileName) {
       setDataFileStatus("Saved " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.", false);
