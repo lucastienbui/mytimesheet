@@ -7,7 +7,6 @@
   var DATA_FILE_PATH_STORAGE_KEY = "local-timesheet.dataFilePath.v1";
   var DATA_BACKUP_STORAGE_KEY = "local-timesheet.dataBackup.v1";
   var NEW_PROJECT_VALUE = "__new_project__";
-  var DEFAULT_PROJECT = "General";
   var VIEW_AUTO = "auto";
   var VIEW_CALENDAR = "calendar";
   var VIEW_AGENDA = "agenda";
@@ -30,12 +29,12 @@
     viewPreference: VIEW_AUTO,
     viewMode: getSelectedViewMode(VIEW_AUTO),
     entries: {},
-    projects: normalizeProjects([], {}),
+    projects: normalizeProjectList([]),
     dataFileHandle: null,
     dataFilePath: "",
     dataFileName: DEFAULT_DATA_FILE_NAME,
     dataFileMode: "memory",
-    selectedProject: DEFAULT_PROJECT,
+    selectedProject: "",
     isCreatingProject: false,
     pendingDeleteProject: "",
     bundledDataFilePath: ""
@@ -454,21 +453,27 @@
 
     return {
       entries: entries,
-      projects: normalizeProjects(projectsSource, entries)
+      projects: normalizeProjectList(projectsSource)
     };
   }
 
-  async function persistData() {
+  async function persistData(options) {
+    var skipNewFilePrompt = options && options.skipNewFilePrompt;
+
     updateLocalDataGlobal();
     saveDataBackup();
 
     if (isDesktopApp()) {
       if (!state.dataFilePath) {
+        if (skipNewFilePrompt) {
+          state.dataFileMode = "changed";
+          return true;
+        }
+
         return connectDesktopDataFileWithCurrentData();
       }
 
-      await saveDesktopDataFile();
-      return true;
+      return await saveDesktopDataFile();
     }
 
     if (state.dataFileHandle) {
@@ -478,7 +483,7 @@
       return true;
     }
 
-    if (supportsSavePicker()) {
+    if (!skipNewFilePrompt && supportsSavePicker()) {
       try {
         await connectDataFileForAutoSave();
         renderDataFileStatus("Saved to " + state.dataFileName + ". Future changes in this session will save automatically.");
@@ -495,7 +500,9 @@
     }
 
     state.dataFileMode = "changed";
-    renderDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.");
+    if (!skipNewFilePrompt) {
+      renderDataFileStatus("Changes are ready. Click Export data to save an updated " + DEFAULT_DATA_FILE_NAME + " file.");
+    }
     return true;
   }
 
@@ -751,7 +758,7 @@
       version: DATA_FILE_VERSION,
       updatedAt: null,
       entries: {},
-      projects: [DEFAULT_PROJECT]
+      projects: []
     };
   }
 
@@ -787,7 +794,7 @@
   }
 
   function renderAfterDataChange() {
-    state.projects = normalizeProjects(state.projects, state.entries);
+    state.projects = normalizeProjectList(state.projects);
     renderMainView();
   }
 
@@ -1286,12 +1293,16 @@
   }
 
   function renderProjectPicker(selectedProject) {
-    var activeProject = selectedProject && state.projects.indexOf(selectedProject) !== -1
-      ? selectedProject
-      : state.projects[0] || DEFAULT_PROJECT;
+    var activeProject = "";
 
     if (state.isCreatingProject) {
       activeProject = NEW_PROJECT_VALUE;
+    } else if (selectedProject && state.projects.indexOf(selectedProject) !== -1) {
+      activeProject = selectedProject;
+    } else if (state.projects.indexOf(state.selectedProject) !== -1) {
+      activeProject = state.selectedProject;
+    } else if (state.projects.length > 0) {
+      activeProject = state.projects[0];
     }
 
     state.selectedProject = activeProject;
@@ -1334,7 +1345,12 @@
       return;
     }
 
-    elements.projectPickerValue.textContent = state.selectedProject || state.projects[0] || DEFAULT_PROJECT;
+    if (!state.selectedProject && state.projects.length === 0) {
+      elements.projectPickerValue.textContent = "No project yet";
+      return;
+    }
+
+    elements.projectPickerValue.textContent = state.selectedProject || "Choose project";
   }
 
   function chooseProject(project) {
@@ -1399,11 +1415,6 @@
   function openDeleteProjectDialog(projectName) {
     var entryCount = countEntriesForProject(projectName);
 
-    if (state.projects.length <= 1) {
-      showMessage(elements.entryMessage, "You must keep at least one project.", true);
-      return;
-    }
-
     state.pendingDeleteProject = projectName;
     elements.deleteProjectMessage.textContent =
       "Deleting \"" +
@@ -1430,13 +1441,9 @@
       return;
     }
 
-    state.projects = state.projects.filter(function (project) {
+    state.projects = normalizeProjectList(state.projects.filter(function (project) {
       return project !== projectName;
-    });
-
-    if (state.projects.length === 0) {
-      state.projects = [DEFAULT_PROJECT];
-    }
+    }));
 
     Object.keys(state.entries).forEach(function (currentDateKey) {
       var entries = entriesForDate(currentDateKey).filter(function (entry) {
@@ -1452,11 +1459,18 @@
 
     if (state.isCreatingProject || state.selectedProject === projectName) {
       state.isCreatingProject = false;
-      state.selectedProject = state.projects[0] || DEFAULT_PROJECT;
+      state.selectedProject = state.projects[0] || "";
     }
 
     try {
-      await persistData();
+      if (!(await persistData({ skipNewFilePrompt: true }))) {
+        showMessage(elements.entryMessage, "Project was removed in memory, but the data file could not be saved.", true);
+        closeDeleteProjectDialog();
+        renderProjectPicker(state.selectedProject);
+        renderDayEntries(elements.entryDate.value);
+        renderMainView();
+        return;
+      }
     } catch (error) {
       showMessage(elements.entryMessage, "Project was removed in memory, but the data file could not be saved.", true);
       closeDeleteProjectDialog();
@@ -1796,31 +1810,17 @@
       checkIn: entry.checkIn,
       checkOut: entry.checkOut,
       duration: roundHours(duration),
-      project: normalizeStoredProject(entry.project) || DEFAULT_PROJECT,
+      project: normalizeStoredProject(entry.project),
       description: normalizeDescription(entry.description)
     };
   }
 
-  function normalizeProjects(projectList, entries) {
-    var projects = (Array.isArray(projectList) ? projectList : []).concat(projectsFromEntries(entries));
-    var normalized = projects.map(function (project) {
-      return normalizeStoredProject(project);
-    }).filter(Boolean);
-
-    if (normalized.indexOf(DEFAULT_PROJECT) === -1) {
-      normalized.unshift(DEFAULT_PROJECT);
-    }
-
-    return unique(normalized).sort(caseInsensitiveSort);
-  }
-
-  function projectsFromEntries(entries) {
-    return Object.keys(entries || {}).reduce(function (projects, dateKey) {
-      (entries[dateKey] || []).forEach(function (entry) {
-        projects.push(entry.project);
-      });
-      return projects;
-    }, []);
+  function normalizeProjectList(projectList) {
+    return unique(
+      (Array.isArray(projectList) ? projectList : []).map(function (project) {
+        return normalizeStoredProject(project);
+      }).filter(Boolean)
+    ).sort(caseInsensitiveSort);
   }
 
   function createEntry(checkIn, checkOut, project, duration, existingId, description) {
