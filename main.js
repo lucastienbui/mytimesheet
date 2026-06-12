@@ -41,10 +41,29 @@ app.on("window-all-closed", () => {
 
 function registerIpcHandlers() {
   ipcMain.handle("data:loadRecent", loadRecentDataFile);
+  ipcMain.handle("data:loadAtPath", loadDataFileAtPath);
+  ipcMain.handle("data:remember", rememberDataFilePathHandler);
   ipcMain.handle("data:open", openDataFile);
   ipcMain.handle("data:create", createDataFile);
   ipcMain.handle("data:save", saveDataFile);
   ipcMain.handle("data:export", exportDataFile);
+}
+
+async function loadDataFileAtPath(_event, filePath) {
+  if (!filePath || typeof filePath !== "string") {
+    return { ok: false, error: "No data file path provided." };
+  }
+
+  return readDataFile(filePath);
+}
+
+async function rememberDataFilePathHandler(_event, filePath) {
+  if (!filePath || typeof filePath !== "string") {
+    return { ok: false, error: "No data file path provided." };
+  }
+
+  await rememberDataFilePath(filePath);
+  return { ok: true, filePath };
 }
 
 async function loadRecentDataFile() {
