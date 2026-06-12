@@ -2,10 +2,8 @@
   "use strict";
 
   var DATA_FILE_VERSION = 1;
-  var DEFAULT_DATA_FILE_NAME = "timesheet-data.json";
-  var RECENT_FILE_DB_NAME = "my-timesheet-recent-file";
-  var RECENT_FILE_STORE_NAME = "handles";
-  var RECENT_FILE_KEY = "timesheet-data";
+  var DEFAULT_DATA_FILE_NAME = "timesheet-data.js";
+  var DATA_GLOBAL_NAME = "MY_TIMESHEET_DATA";
   var NEW_PROJECT_VALUE = "__new_project__";
   var DEFAULT_PROJECT = "General";
   var VIEW_AUTO = "auto";
@@ -32,7 +30,7 @@
     entries: {},
     projects: normalizeProjects([], {}),
     dataFileHandle: null,
-    dataFileName: "",
+    dataFileName: DEFAULT_DATA_FILE_NAME,
     dataFileMode: "memory"
   };
 
@@ -50,10 +48,6 @@
     calendarViewButton: document.getElementById("calendarViewButton"),
     agendaViewButton: document.getElementById("agendaViewButton"),
     dataFileStatus: document.getElementById("dataFileStatus"),
-    openDataFileButton: document.getElementById("openDataFileButton"),
-    createDataFileButton: document.getElementById("createDataFileButton"),
-    downloadDataFileButton: document.getElementById("downloadDataFileButton"),
-    dataFileInput: document.getElementById("dataFileInput"),
     openReportButton: document.getElementById("openReportButton"),
     entryDialog: document.getElementById("entryDialog"),
     entryForm: document.getElementById("entryForm"),
@@ -92,12 +86,12 @@
   initialize();
 
   function initialize() {
+    loadLocalDataFile();
     renderDataFileStatus();
     renderWeekdays();
     renderMainView();
     bindEvents();
     bindResponsiveViewMode();
-    restoreRecentDataFile();
   }
 
   function bindEvents() {
@@ -127,11 +121,6 @@
     elements.agendaViewButton.addEventListener("click", function () {
       setViewPreference(VIEW_AGENDA);
     });
-
-    elements.openDataFileButton.addEventListener("click", openDataFile);
-    elements.createDataFileButton.addEventListener("click", createDataFile);
-    elements.downloadDataFileButton.addEventListener("click", downloadDataFile);
-    elements.dataFileInput.addEventListener("change", importDataFile);
 
     elements.openReportButton.addEventListener("click", openReportDialog);
     elements.closeEntryButton.addEventListener("click", closeEntryDialog);
@@ -178,217 +167,25 @@
     });
   }
 
-  async function openDataFile() {
-    if (hasDirectFileAccess()) {
-      await openDataFileWithPicker();
-      return;
-    }
+  function loadLocalDataFile() {
+    var localData = typeof window !== "undefined" ? window[DATA_GLOBAL_NAME] : null;
 
-    elements.dataFileInput.click();
-  }
-
-  async function openDataFileWithPicker() {
-    var handles;
-
-    try {
-      handles = await window.showOpenFilePicker({
-        multiple: false,
-        types: [dataFilePickerType()]
-      });
-
-      if (!handles || handles.length === 0) {
-        return;
-      }
-
-      await loadDataFromHandle(handles[0], true);
-    } catch (error) {
-      handleDataFileError(error, "Could not open the selected data file.");
-    }
-  }
-
-  async function restoreRecentDataFile() {
-    var handle;
-    var hasPermission;
-
-    try {
-      handle = await getRecentDataFileHandle();
-
-      if (!handle) {
-        await autoLoadDefaultDataFile();
-        return;
-      }
-
-      hasPermission = await ensureFileHandlePermission(handle, true);
-
-      if (!hasPermission) {
-        renderDataFileStatus("Recent data file found, but permission is needed again. Click Open data file to reconnect it.");
-        await autoLoadDefaultDataFile();
-        return;
-      }
-
-      await loadDataFromHandle(handle, false);
-      renderDataFileStatus("Reconnected recent data file " + (handle.name || DEFAULT_DATA_FILE_NAME) + ". Changes will save automatically.");
-    } catch (error) {
-      await autoLoadDefaultDataFile();
-    }
-  }
-
-  async function createDataFile() {
-    var handle;
-
-    if (!hasDirectFileAccess()) {
-      downloadDataFile();
-      setDataFileStatus("Your browser does not allow direct file writing here. A JSON data file was downloaded instead.", false);
+    if (!localData) {
+      renderDataFileStatus("No " + DEFAULT_DATA_FILE_NAME + " data was found. A blank timesheet is ready.");
       return;
     }
 
     try {
-      handle = await window.showSaveFilePicker({
-        suggestedName: DEFAULT_DATA_FILE_NAME,
-        types: [dataFilePickerType()]
-      });
-      state.dataFileHandle = handle;
-      state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
-      state.dataFileMode = "direct";
-      await writeDataFile();
-      await rememberRecentDataFileHandle(handle);
-      renderDataFileStatus("Created and connected " + state.dataFileName + ".");
-    } catch (error) {
-      handleDataFileError(error, "Could not create the data file.");
-    }
-  }
-
-  async function importDataFile(event) {
-    var file = event.target.files && event.target.files[0];
-    var text;
-    var shouldCopyToDefault;
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      text = await file.text();
-      applyDataFileText(text);
-      renderAfterDataChange();
-
-      if (file.name && file.name !== DEFAULT_DATA_FILE_NAME) {
-        shouldCopyToDefault = confirmDefaultDataFileCopy(file.name);
-        if (shouldCopyToDefault) {
-          state.dataFileHandle = null;
-          state.dataFileName = DEFAULT_DATA_FILE_NAME;
-          state.dataFileMode = "download";
-          downloadDataFile(DEFAULT_DATA_FILE_NAME);
-          renderDataFileStatus("Imported " + file.name + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside MyTimesheet.html if needed.");
-          return;
-        }
-      }
-
-      state.dataFileHandle = null;
-      state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
-      state.dataFileMode = "download";
-      renderDataFileStatus("Imported " + state.dataFileName + ". Use Download data file after changes to save a new copy.");
-    } catch (error) {
-      setDataFileStatus("Could not import that data file. Please choose a valid JSON data file.", true);
-    } finally {
-      elements.dataFileInput.value = "";
-    }
-  }
-
-  async function loadDataFromHandle(handle, warnWhenNonDefault) {
-    var file = await handle.getFile();
-    var text = await file.text();
-    var shouldCopyToDefault;
-
-    applyDataFileText(text);
-    renderAfterDataChange();
-
-    if (warnWhenNonDefault && file.name && file.name !== DEFAULT_DATA_FILE_NAME) {
-      shouldCopyToDefault = confirmDefaultDataFileCopy(file.name);
-      if (shouldCopyToDefault) {
-        try {
-          await saveCurrentDataAsDefaultFile(file.name);
-          return;
-        } catch (error) {
-          if (!error || error.name !== "AbortError") {
-            throw error;
-          }
-        }
-      }
-    }
-
-    state.dataFileHandle = handle;
-    state.dataFileName = handle.name || file.name || DEFAULT_DATA_FILE_NAME;
-    state.dataFileMode = "direct";
-    await rememberRecentDataFileHandle(handle);
-    renderDataFileStatus("Connected to " + state.dataFileName + ". Changes will save to this file.");
-  }
-
-  async function autoLoadDefaultDataFile() {
-    var response;
-    var text;
-
-    if (typeof fetch !== "function") {
-      return;
-    }
-
-    try {
-      response = await fetch(DEFAULT_DATA_FILE_NAME, { cache: "no-store" });
-
-      if (!response.ok) {
-        return;
-      }
-
-      text = await response.text();
-      applyDataFileText(text);
-      state.dataFileHandle = null;
+      applyDataFileData(localData);
       state.dataFileName = DEFAULT_DATA_FILE_NAME;
-      state.dataFileMode = "download";
-      renderDataFileStatus("Loaded " + DEFAULT_DATA_FILE_NAME + " from the app folder. Use Open data file to connect it for automatic saving, or Download data file after changes.");
-      renderAfterDataChange();
+      state.dataFileMode = "loaded";
     } catch (error) {
-      // Some browsers block fetch() for local file:// pages. The manual picker still works.
+      setDataFileStatus(DEFAULT_DATA_FILE_NAME + " could not be read. A blank timesheet is ready.", true);
     }
   }
 
-  async function saveCurrentDataAsDefaultFile(sourceFileName) {
-    var handle;
-
-    if (!hasDirectFileAccess()) {
-      state.dataFileHandle = null;
-      state.dataFileName = DEFAULT_DATA_FILE_NAME;
-      state.dataFileMode = "download";
-      downloadDataFile(DEFAULT_DATA_FILE_NAME);
-      renderDataFileStatus("Imported " + sourceFileName + " and downloaded a copy named " + DEFAULT_DATA_FILE_NAME + ". Move it beside MyTimesheet.html if needed.");
-      return;
-    }
-
-    handle = await window.showSaveFilePicker({
-      suggestedName: DEFAULT_DATA_FILE_NAME,
-      types: [dataFilePickerType()]
-    });
-    state.dataFileHandle = handle;
-    state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
-    state.dataFileMode = "direct";
-    await writeDataFile();
-    await rememberRecentDataFileHandle(handle);
-    renderDataFileStatus("Copied " + sourceFileName + " into " + state.dataFileName + ". Changes will save to this local file.");
-  }
-
-  function confirmDefaultDataFileCopy(sourceFileName) {
-    if (typeof window === "undefined" || typeof window.confirm !== "function") {
-      return false;
-    }
-
-    return window.confirm(
-      "You selected " + sourceFileName + ". This app normally uses " + DEFAULT_DATA_FILE_NAME + " in the app folder.\\n\\n" +
-      "Choose OK to copy/save this data as " + DEFAULT_DATA_FILE_NAME + ". Choose Cancel to keep using the selected file."
-    );
-  }
-
-  function applyDataFileText(text) {
-    var parsed = safeJsonParse(text, null);
-    var data = normalizeDataFile(parsed);
+  function applyDataFileData(rawData) {
+    var data = normalizeDataFile(rawData);
 
     state.entries = data.entries;
     state.projects = data.projects;
@@ -445,7 +242,7 @@
     state.dataFileName = DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "download";
     downloadDataFile(DEFAULT_DATA_FILE_NAME);
-    renderDataFileStatus("Downloaded " + DEFAULT_DATA_FILE_NAME + ". Move it beside MyTimesheet.html if needed, then use Open data file for automatic saving.");
+    renderDataFileStatus("Saved " + DEFAULT_DATA_FILE_NAME + ". Keep it beside MyTimesheet.html so it loads next time.");
     return true;
   }
 
@@ -459,7 +256,6 @@
     state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
     await writeDataFile();
-    await rememberRecentDataFileHandle(handle);
   }
 
   function showAutoCreateDataFileNotice() {
@@ -480,12 +276,12 @@
   async function writePayloadToHandle(fileHandle) {
     var writable = await fileHandle.createWritable();
 
-    await writable.write(JSON.stringify(buildDataFilePayload(), null, 2));
+    await writable.write(buildDataFileContent());
     await writable.close();
   }
 
   function downloadDataFile(fileName) {
-    var blob = new Blob([JSON.stringify(buildDataFilePayload(), null, 2)], { type: "application/json;charset=utf-8;" });
+    var blob = new Blob([buildDataFileContent()], { type: "application/javascript;charset=utf-8;" });
     var url = URL.createObjectURL(blob);
     var link = document.createElement("a");
 
@@ -506,6 +302,10 @@
     };
   }
 
+  function buildDataFileContent() {
+    return "window." + DATA_GLOBAL_NAME + " = " + JSON.stringify(buildDataFilePayload(), null, 2) + ";\n";
+  }
+
   function renderAfterDataChange() {
     state.projects = normalizeProjects(state.projects, state.entries);
     renderMainView();
@@ -520,9 +320,9 @@
     if (state.dataFileMode === "direct" && state.dataFileName) {
       setDataFileStatus("Connected to " + state.dataFileName + ". Changes save to this local file.", false);
     } else if (state.dataFileMode === "download" && state.dataFileName) {
-      setDataFileStatus("Imported " + state.dataFileName + ". Use Download data file after changes to save a new copy.", false);
+      setDataFileStatus("Saved " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.", false);
     } else {
-      setDataFileStatus("No data file connected. Open or create " + DEFAULT_DATA_FILE_NAME + " to save entries on this PC.", false);
+      setDataFileStatus("Using " + DEFAULT_DATA_FILE_NAME + " from this folder. Save an entry to update that file.", false);
     }
   }
 
@@ -532,134 +332,17 @@
   }
 
   function hasDirectFileAccess() {
-    return typeof window !== "undefined" &&
-      typeof window.showOpenFilePicker === "function" &&
-      typeof window.showSaveFilePicker === "function";
+    return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
   }
 
   function dataFilePickerType() {
     return {
-      description: "Timesheet JSON data",
+      description: "Timesheet JavaScript data",
       accept: {
-        "application/json": [".json"]
+        "application/javascript": [".js"],
+        "text/javascript": [".js"]
       }
     };
-  }
-
-  function handleDataFileError(error, fallbackMessage) {
-    if (error && error.name === "AbortError") {
-      return;
-    }
-
-    setDataFileStatus(fallbackMessage, true);
-  }
-
-  async function rememberRecentDataFileHandle(handle) {
-    var database;
-
-    if (!handle || !supportsRecentFileHandleStorage()) {
-      return;
-    }
-
-    try {
-      database = await openRecentFileDatabase();
-      await putRecentFileRecord(database, {
-        id: RECENT_FILE_KEY,
-        handle: handle,
-        name: handle.name || DEFAULT_DATA_FILE_NAME,
-        updatedAt: new Date().toISOString()
-      });
-      database.close();
-    } catch (error) {
-      // Remembering the handle is a convenience only; saving the data file already succeeded.
-    }
-  }
-
-  async function getRecentDataFileHandle() {
-    var database;
-    var record;
-
-    if (!supportsRecentFileHandleStorage()) {
-      return null;
-    }
-
-    database = await openRecentFileDatabase();
-    record = await getRecentFileRecord(database);
-    database.close();
-
-    return record && record.handle ? record.handle : null;
-  }
-
-  function supportsRecentFileHandleStorage() {
-    return typeof indexedDB !== "undefined" && typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
-  }
-
-  function openRecentFileDatabase() {
-    return new Promise(function (resolve, reject) {
-      var request = indexedDB.open(RECENT_FILE_DB_NAME, 1);
-
-      request.onupgradeneeded = function () {
-        var database = request.result;
-
-        if (!database.objectStoreNames.contains(RECENT_FILE_STORE_NAME)) {
-          database.createObjectStore(RECENT_FILE_STORE_NAME, { keyPath: "id" });
-        }
-      };
-      request.onsuccess = function () {
-        resolve(request.result);
-      };
-      request.onerror = function () {
-        reject(request.error);
-      };
-    });
-  }
-
-  function putRecentFileRecord(database, record) {
-    return new Promise(function (resolve, reject) {
-      var transaction = database.transaction(RECENT_FILE_STORE_NAME, "readwrite");
-      var store = transaction.objectStore(RECENT_FILE_STORE_NAME);
-
-      store.put(record);
-      transaction.oncomplete = function () {
-        resolve();
-      };
-      transaction.onerror = function () {
-        reject(transaction.error);
-      };
-    });
-  }
-
-  function getRecentFileRecord(database) {
-    return new Promise(function (resolve, reject) {
-      var transaction = database.transaction(RECENT_FILE_STORE_NAME, "readonly");
-      var store = transaction.objectStore(RECENT_FILE_STORE_NAME);
-      var request = store.get(RECENT_FILE_KEY);
-
-      request.onsuccess = function () {
-        resolve(request.result || null);
-      };
-      request.onerror = function () {
-        reject(request.error);
-      };
-    });
-  }
-
-  async function ensureFileHandlePermission(handle, readWrite) {
-    var options = { mode: readWrite ? "readwrite" : "read" };
-    var permission;
-
-    if (typeof handle.queryPermission !== "function" || typeof handle.requestPermission !== "function") {
-      return true;
-    }
-
-    permission = await handle.queryPermission(options);
-
-    if (permission === "granted") {
-      return true;
-    }
-
-    permission = await handle.requestPermission(options);
-    return permission === "granted";
   }
 
   function bindResponsiveViewMode() {
@@ -1051,7 +734,7 @@
       await persistData();
     } catch (error) {
       showMessage(elements.entryMessage, "Entry was updated in memory, but the data file could not be saved.", true);
-      setDataFileStatus("Could not save to " + (state.dataFileName || "the data file") + ". Use Download data file to keep a copy.", true);
+      setDataFileStatus("Could not save to " + (state.dataFileName || DEFAULT_DATA_FILE_NAME) + ". Save the generated " + DEFAULT_DATA_FILE_NAME + " beside MyTimesheet.html.", true);
       return;
     }
     renderDayEntries(dateKey);
@@ -1087,7 +770,7 @@
       await persistData();
     } catch (error) {
       showMessage(elements.entryMessage, "Entry was deleted in memory, but the data file could not be saved.", true);
-      setDataFileStatus("Could not save to " + (state.dataFileName || "the data file") + ". Use Download data file to keep a copy.", true);
+      setDataFileStatus("Could not save to " + (state.dataFileName || DEFAULT_DATA_FILE_NAME) + ". Save the generated " + DEFAULT_DATA_FILE_NAME + " beside MyTimesheet.html.", true);
       return;
     }
     renderDayEntries(dateKey);
@@ -1515,14 +1198,6 @@
     return entries.reduce(function (total, entry) {
       return total + Number(entry.duration || 0);
     }, 0);
-  }
-
-  function safeJsonParse(value, fallback) {
-    try {
-      return JSON.parse(value);
-    } catch (error) {
-      return fallback;
-    }
   }
 
   function normalizeStoredProject(project) {

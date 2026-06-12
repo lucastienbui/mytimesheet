@@ -20,14 +20,8 @@
       <section class="data-card" aria-label="Local data file">
         <div>
           <p class="eyebrow">Data file</p>
-          <h2>Save entries to a local JSON file</h2>
-          <p id="dataFileStatus" class="data-file-status">No data file connected. Open timesheet-data.json, or save an entry to create it.</p>
-        </div>
-        <div class="data-actions">
-          <button class="secondary-button" id="openDataFileButton" type="button">Open data file</button>
-          <button class="secondary-button" id="createDataFileButton" type="button">Create data file</button>
-          <button class="secondary-button" id="downloadDataFileButton" type="button">Download data file</button>
-          <input class="hidden" id="dataFileInput" type="file" accept="application/json,.json">
+          <h2>Using timesheet-data.js</h2>
+          <p id="dataFileStatus" class="data-file-status">Data loads from timesheet-data.js in this folder. If you have an old data file, export it first and copy it into this local folder.</p>
         </div>
       </section>
 
@@ -64,7 +58,7 @@
           <li>Click a day to add several check in, check out, and project entries.</li>
           <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
           <li>Use Report to see project totals for a period and export the detailed CSV.</li>
-          <li>Data is stored in a local JSON file on your computer, not in browser site cache.</li>
+          <li>Data is stored in timesheet-data.js in this folder, not in browser site cache.</li>
         </ul>
       </section>
     </div>
@@ -176,6 +170,7 @@
       </form>
     </dialog>
 
+    <script src="timesheet-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
