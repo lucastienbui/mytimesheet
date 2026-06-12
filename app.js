@@ -4,6 +4,8 @@
   var DATA_FILE_VERSION = 1;
   var DEFAULT_DATA_FILE_NAME = "timesheet-data.js";
   var DATA_GLOBAL_NAME = "MY_TIMESHEET_DATA";
+  var DATA_FILE_PATH_STORAGE_KEY = "local-timesheet.dataFilePath.v1";
+  var DATA_BACKUP_STORAGE_KEY = "local-timesheet.dataBackup.v1";
   var NEW_PROJECT_VALUE = "__new_project__";
   var DEFAULT_PROJECT = "General";
   var VIEW_AUTO = "auto";
@@ -35,7 +37,8 @@
     dataFileMode: "memory",
     selectedProject: DEFAULT_PROJECT,
     isCreatingProject: false,
-    pendingDeleteProject: ""
+    pendingDeleteProject: "",
+    bundledDataFilePath: ""
   };
 
   var elements = {
@@ -104,13 +107,33 @@
   initialize();
 
   function initialize() {
-    loadLocalDataFile();
-    renderDataFileStatus();
     renderWeekdays();
-    renderMainView();
     bindEvents();
     bindResponsiveViewMode();
-    restoreRecentDesktopDataFile();
+    loadInitialDataFile().then(function () {
+      renderMainView();
+    });
+  }
+
+  async function loadInitialDataFile() {
+    var restored = false;
+
+    if (isDesktopApp()) {
+      state.bundledDataFilePath = await window.myTimesheetDesktop.getBundledDataFilePath();
+      restored = await restoreRecentDesktopDataFile();
+
+      if (!restored) {
+        restored = await restoreStoredDesktopDataFilePath();
+      }
+    }
+
+    if (!restored) {
+      restored = restoreDataBackup();
+    }
+
+    if (!restored) {
+      resetToBlankDataFile("Open or create a data file to get started.");
+    }
   }
 
   function bindEvents() {
@@ -204,39 +227,136 @@
     });
   }
 
-  function loadLocalDataFile() {
-    var localData = typeof window !== "undefined" ? window[DATA_GLOBAL_NAME] : null;
+  function resetToBlankDataFile(statusMessage) {
+    applyDataFileData(buildBlankDataFilePayload());
+    state.dataFileHandle = null;
+    state.dataFilePath = "";
+    state.dataFileName = DEFAULT_DATA_FILE_NAME;
+    state.dataFileMode = "memory";
+    updateLocalDataGlobal();
+    renderDataFileStatus(statusMessage);
+  }
 
-    if (!localData) {
-      renderDataFileStatus("No " + DEFAULT_DATA_FILE_NAME + " data was found. A blank timesheet is ready.");
-      return;
+  function saveDataBackup() {
+    try {
+      localStorage.setItem(
+        DATA_BACKUP_STORAGE_KEY,
+        JSON.stringify({
+          fileName: state.dataFileName,
+          filePath: state.dataFilePath,
+          payload: buildDataFilePayload()
+        })
+      );
+    } catch (error) {
+      // Ignore storage quota errors.
+    }
+  }
+
+  function restoreDataBackup() {
+    var stored;
+    var backup;
+
+    try {
+      stored = localStorage.getItem(DATA_BACKUP_STORAGE_KEY);
+      backup = stored ? JSON.parse(stored) : null;
+    } catch (error) {
+      return false;
+    }
+
+    if (!backup || !backup.payload) {
+      return false;
+    }
+
+    if (isBundledDataFilePath(backup.filePath)) {
+      return false;
     }
 
     try {
-      applyDataFileData(localData);
-      state.dataFileName = DEFAULT_DATA_FILE_NAME;
-      state.dataFileMode = "loaded";
+      applyDataFileData(backup.payload);
+      state.dataFileHandle = null;
+      state.dataFilePath = backup.filePath || "";
+      state.dataFileName = backup.fileName || DEFAULT_DATA_FILE_NAME;
+      state.dataFileMode = state.dataFilePath ? "connected" : "loaded";
+      updateLocalDataGlobal();
+      renderDataFileStatus(
+        "Restored " +
+          state.dataFileName +
+          (state.dataFilePath ? ". Changes will save automatically." : " from the last session.")
+      );
+      return true;
     } catch (error) {
-      setDataFileStatus(DEFAULT_DATA_FILE_NAME + " could not be read. A blank timesheet is ready.", true);
+      return false;
     }
+  }
+
+  function isBundledDataFilePath(filePath) {
+    if (!filePath) {
+      return false;
+    }
+
+    if (!state.bundledDataFilePath) {
+      return false;
+    }
+
+    return normalizePath(filePath) === normalizePath(state.bundledDataFilePath);
+  }
+
+  function normalizePath(filePath) {
+    return String(filePath).replace(/\\/g, "/").toLowerCase();
   }
 
   async function restoreRecentDesktopDataFile() {
     var result;
 
     if (!isDesktopApp()) {
-      return;
+      return false;
     }
 
     result = await window.myTimesheetDesktop.loadRecentDataFile();
 
     if (!result || !result.ok) {
-      renderDataFileStatus();
-      return;
+      return false;
     }
 
-    applyDesktopDataFile(result);
-    renderDataFileStatus("Reopened " + state.dataFileName + ". Changes will save automatically.");
+    return await applyDesktopDataFileFromResult(result, "Reopened " + result.fileName + ". Changes will save automatically.");
+  }
+
+  async function restoreStoredDesktopDataFilePath() {
+    var storedPath;
+    var result;
+
+    if (!isDesktopApp()) {
+      return false;
+    }
+
+    storedPath = localStorage.getItem(DATA_FILE_PATH_STORAGE_KEY);
+
+    if (!storedPath || isBundledDataFilePath(storedPath)) {
+      return false;
+    }
+
+    result = await window.myTimesheetDesktop.loadDataFileAtPath(storedPath);
+
+    if (!result || !result.ok) {
+      return false;
+    }
+
+    return await applyDesktopDataFileFromResult(result, "Reopened " + result.fileName + ". Changes will save automatically.");
+  }
+
+  async function applyDesktopDataFileFromResult(result, successMessage) {
+    try {
+      await applyDesktopDataFile(result);
+
+      if (successMessage) {
+        renderDataFileStatus(successMessage);
+      }
+
+      return true;
+    } catch (error) {
+      setDataFileStatus("Could not load data file. Open it again from the data file panel.", true);
+      return false;
+    }
   }
 
   async function openDesktopDataFile() {
@@ -258,7 +378,7 @@
       return;
     }
 
-    applyDesktopDataFile(result);
+    await applyDesktopDataFile(result);
     renderDataFileStatus("Opened " + state.dataFileName + ". Changes will save automatically.");
   }
 
@@ -284,18 +404,32 @@
       return false;
     }
 
-    applyDesktopDataFile(result);
+    await applyDesktopDataFile(result);
     renderDataFileStatus("Created " + state.dataFileName + ". Changes will save automatically.");
     return true;
   }
 
-  function applyDesktopDataFile(result) {
+  async function applyDesktopDataFile(result) {
     applyDataFileData(result.data);
     updateLocalDataGlobal();
     state.dataFilePath = result.filePath || "";
     state.dataFileName = result.fileName || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "connected";
+    await rememberConnectedDataFilePath(state.dataFilePath);
+    saveDataBackup();
     renderAfterDataChange();
+  }
+
+  async function rememberConnectedDataFilePath(filePath) {
+    if (!filePath || isBundledDataFilePath(filePath)) {
+      return;
+    }
+
+    localStorage.setItem(DATA_FILE_PATH_STORAGE_KEY, filePath);
+
+    if (isDesktopApp() && window.myTimesheetDesktop.rememberDataFilePath) {
+      await window.myTimesheetDesktop.rememberDataFilePath(filePath);
+    }
   }
 
   function applyDataFileData(rawData) {
@@ -326,6 +460,7 @@
 
   async function persistData() {
     updateLocalDataGlobal();
+    saveDataBackup();
 
     if (isDesktopApp()) {
       if (!state.dataFilePath) {
@@ -378,6 +513,8 @@
     state.dataFilePath = result.filePath || state.dataFilePath;
     state.dataFileName = result.fileName || state.dataFileName;
     state.dataFileMode = "connected";
+    await rememberConnectedDataFilePath(state.dataFilePath);
+    saveDataBackup();
     renderDataFileStatus("Saved to " + state.dataFileName + ".");
     return true;
   }
@@ -412,7 +549,7 @@
         return;
       }
 
-      applyDesktopDataFile(result);
+      await applyDesktopDataFile(result);
       renderDataFileStatus("Exported " + state.dataFileName + ". Changes will save automatically.");
       return;
     }
@@ -473,6 +610,7 @@
         state.dataFileName = handles[0].name || DEFAULT_DATA_FILE_NAME;
         state.dataFileMode = "connected";
         updateLocalDataGlobal();
+        saveDataBackup();
         renderAfterDataChange();
         renderDataFileStatus("Opened " + state.dataFileName + ". Changes will save automatically.");
         return;
@@ -509,6 +647,7 @@
           state.dataFileName = file.name || DEFAULT_DATA_FILE_NAME;
           state.dataFileMode = "loaded";
           updateLocalDataGlobal();
+          saveDataBackup();
           renderAfterDataChange();
           renderDataFileStatus("Opened " + state.dataFileName + ". Click Export data to save changes to a file.");
         } catch (error) {
@@ -536,6 +675,7 @@
         state.dataFilePath = "";
         state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
         state.dataFileMode = "connected";
+        saveDataBackup();
         renderAfterDataChange();
         renderDataFileStatus("Created " + state.dataFileName + ". Changes will save automatically.");
         return true;
@@ -554,6 +694,7 @@
     state.dataFilePath = "";
     state.dataFileName = DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "exported";
+    saveDataBackup();
     renderAfterDataChange();
     renderDataFileStatus("Created " + DEFAULT_DATA_FILE_NAME + ". Keep it beside MyTimesheet.html so it can be opened next time.");
     return true;
@@ -571,7 +712,7 @@
       return false;
     }
 
-    applyDesktopDataFile(result);
+    await applyDesktopDataFile(result);
     renderDataFileStatus("Saved to " + state.dataFileName + ". Changes will save automatically.");
     return true;
   }
@@ -663,7 +804,7 @@
     } else if (state.dataFileMode === "exported" && state.dataFileName) {
       setDataFileStatus("Saved " + state.dataFileName + ". Keep it beside MyTimesheet.html so it loads next time.", false);
     } else {
-      setDataFileStatus("Using " + DEFAULT_DATA_FILE_NAME + " from this folder. Save an entry to update that file.", false);
+      setDataFileStatus("No data file connected. Open or create a data file to get started.", false);
     }
   }
 

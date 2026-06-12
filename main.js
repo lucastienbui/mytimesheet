@@ -41,10 +41,30 @@ app.on("window-all-closed", () => {
 
 function registerIpcHandlers() {
   ipcMain.handle("data:loadRecent", loadRecentDataFile);
+  ipcMain.handle("data:loadAtPath", loadDataFileAtPath);
+  ipcMain.handle("data:remember", rememberDataFilePathHandler);
+  ipcMain.handle("data:bundledPath", () => bundledDataFilePath());
   ipcMain.handle("data:open", openDataFile);
   ipcMain.handle("data:create", createDataFile);
   ipcMain.handle("data:save", saveDataFile);
   ipcMain.handle("data:export", exportDataFile);
+}
+
+async function loadDataFileAtPath(_event, filePath) {
+  if (!filePath || typeof filePath !== "string") {
+    return { ok: false, error: "No data file path provided." };
+  }
+
+  return readDataFile(filePath);
+}
+
+async function rememberDataFilePathHandler(_event, filePath) {
+  if (!filePath || typeof filePath !== "string") {
+    return { ok: false, error: "No data file path provided." };
+  }
+
+  await rememberDataFilePath(filePath);
+  return { ok: true, filePath };
 }
 
 async function loadRecentDataFile() {
@@ -52,6 +72,10 @@ async function loadRecentDataFile() {
 
   if (!config.dataFilePath) {
     return { ok: false, reason: "missing" };
+  }
+
+  if (path.resolve(config.dataFilePath) === path.resolve(bundledDataFilePath())) {
+    return { ok: false, reason: "bundled" };
   }
 
   return readDataFile(config.dataFilePath);
@@ -78,10 +102,18 @@ async function openDataFile() {
   return dataFile;
 }
 
+function defaultDataFilePath() {
+  return path.join(app.getPath("documents"), DEFAULT_DATA_FILE_NAME);
+}
+
+function bundledDataFilePath() {
+  return path.join(__dirname, DEFAULT_DATA_FILE_NAME);
+}
+
 async function createDataFile(_event, payload) {
   const result = await dialog.showSaveDialog({
     title: "Create timesheet data file",
-    defaultPath: DEFAULT_DATA_FILE_NAME,
+    defaultPath: defaultDataFilePath(),
     filters: dataFileFilters()
   });
 
@@ -106,7 +138,7 @@ async function saveDataFile(_event, request) {
 
 async function exportDataFile(_event, payload) {
   const config = await readConfig();
-  const defaultPath = config.dataFilePath || DEFAULT_DATA_FILE_NAME;
+  const defaultPath = config.dataFilePath || defaultDataFilePath();
   const result = await dialog.showSaveDialog({
     title: "Export timesheet data file",
     defaultPath,
@@ -178,10 +210,12 @@ function emptyDataFile() {
 }
 
 function dataFileResponse(filePath, payload) {
+  const resolvedPath = path.resolve(filePath);
+
   return {
     ok: true,
-    filePath,
-    fileName: path.basename(filePath),
+    filePath: resolvedPath,
+    fileName: path.basename(resolvedPath),
     data: payload
   };
 }
@@ -213,8 +247,14 @@ async function writeConfig(config) {
 }
 
 async function rememberDataFilePath(filePath) {
+  const resolvedPath = path.resolve(filePath);
+
+  if (resolvedPath === path.resolve(bundledDataFilePath())) {
+    return;
+  }
+
   const config = await readConfig();
-  config.dataFilePath = filePath;
+  config.dataFilePath = resolvedPath;
   config.updatedAt = new Date().toISOString();
   await writeConfig(config);
 }
