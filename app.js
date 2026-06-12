@@ -3,6 +3,9 @@
 
   var DATA_FILE_VERSION = 1;
   var DEFAULT_DATA_FILE_NAME = "timesheet-data.json";
+  var RECENT_FILE_DB_NAME = "my-timesheet-recent-file";
+  var RECENT_FILE_STORE_NAME = "handles";
+  var RECENT_FILE_KEY = "timesheet-data";
   var NEW_PROJECT_VALUE = "__new_project__";
   var DEFAULT_PROJECT = "General";
   var VIEW_AUTO = "auto";
@@ -94,7 +97,7 @@
     renderMainView();
     bindEvents();
     bindResponsiveViewMode();
-    autoLoadDefaultDataFile();
+    restoreRecentDataFile();
   }
 
   function bindEvents() {
@@ -203,6 +206,33 @@
     }
   }
 
+  async function restoreRecentDataFile() {
+    var handle;
+    var hasPermission;
+
+    try {
+      handle = await getRecentDataFileHandle();
+
+      if (!handle) {
+        await autoLoadDefaultDataFile();
+        return;
+      }
+
+      hasPermission = await ensureFileHandlePermission(handle, true);
+
+      if (!hasPermission) {
+        renderDataFileStatus("Recent data file found, but permission is needed again. Click Open data file to reconnect it.");
+        await autoLoadDefaultDataFile();
+        return;
+      }
+
+      await loadDataFromHandle(handle, false);
+      renderDataFileStatus("Reconnected recent data file " + (handle.name || DEFAULT_DATA_FILE_NAME) + ". Changes will save automatically.");
+    } catch (error) {
+      await autoLoadDefaultDataFile();
+    }
+  }
+
   async function createDataFile() {
     var handle;
 
@@ -221,6 +251,7 @@
       state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
       state.dataFileMode = "direct";
       await writeDataFile();
+      await rememberRecentDataFileHandle(handle);
       renderDataFileStatus("Created and connected " + state.dataFileName + ".");
     } catch (error) {
       handleDataFileError(error, "Could not create the data file.");
@@ -289,6 +320,7 @@
     state.dataFileHandle = handle;
     state.dataFileName = handle.name || file.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
+    await rememberRecentDataFileHandle(handle);
     renderDataFileStatus("Connected to " + state.dataFileName + ". Changes will save to this file.");
   }
 
@@ -339,6 +371,7 @@
     state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
     await writeDataFile();
+    await rememberRecentDataFileHandle(handle);
     renderDataFileStatus("Copied " + sourceFileName + " into " + state.dataFileName + ". Changes will save to this local file.");
   }
 
@@ -426,6 +459,7 @@
     state.dataFileName = handle.name || DEFAULT_DATA_FILE_NAME;
     state.dataFileMode = "direct";
     await writeDataFile();
+    await rememberRecentDataFileHandle(handle);
   }
 
   function showAutoCreateDataFileNotice() {
@@ -518,6 +552,114 @@
     }
 
     setDataFileStatus(fallbackMessage, true);
+  }
+
+  async function rememberRecentDataFileHandle(handle) {
+    var database;
+
+    if (!handle || !supportsRecentFileHandleStorage()) {
+      return;
+    }
+
+    try {
+      database = await openRecentFileDatabase();
+      await putRecentFileRecord(database, {
+        id: RECENT_FILE_KEY,
+        handle: handle,
+        name: handle.name || DEFAULT_DATA_FILE_NAME,
+        updatedAt: new Date().toISOString()
+      });
+      database.close();
+    } catch (error) {
+      // Remembering the handle is a convenience only; saving the data file already succeeded.
+    }
+  }
+
+  async function getRecentDataFileHandle() {
+    var database;
+    var record;
+
+    if (!supportsRecentFileHandleStorage()) {
+      return null;
+    }
+
+    database = await openRecentFileDatabase();
+    record = await getRecentFileRecord(database);
+    database.close();
+
+    return record && record.handle ? record.handle : null;
+  }
+
+  function supportsRecentFileHandleStorage() {
+    return typeof indexedDB !== "undefined" && typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+  }
+
+  function openRecentFileDatabase() {
+    return new Promise(function (resolve, reject) {
+      var request = indexedDB.open(RECENT_FILE_DB_NAME, 1);
+
+      request.onupgradeneeded = function () {
+        var database = request.result;
+
+        if (!database.objectStoreNames.contains(RECENT_FILE_STORE_NAME)) {
+          database.createObjectStore(RECENT_FILE_STORE_NAME, { keyPath: "id" });
+        }
+      };
+      request.onsuccess = function () {
+        resolve(request.result);
+      };
+      request.onerror = function () {
+        reject(request.error);
+      };
+    });
+  }
+
+  function putRecentFileRecord(database, record) {
+    return new Promise(function (resolve, reject) {
+      var transaction = database.transaction(RECENT_FILE_STORE_NAME, "readwrite");
+      var store = transaction.objectStore(RECENT_FILE_STORE_NAME);
+
+      store.put(record);
+      transaction.oncomplete = function () {
+        resolve();
+      };
+      transaction.onerror = function () {
+        reject(transaction.error);
+      };
+    });
+  }
+
+  function getRecentFileRecord(database) {
+    return new Promise(function (resolve, reject) {
+      var transaction = database.transaction(RECENT_FILE_STORE_NAME, "readonly");
+      var store = transaction.objectStore(RECENT_FILE_STORE_NAME);
+      var request = store.get(RECENT_FILE_KEY);
+
+      request.onsuccess = function () {
+        resolve(request.result || null);
+      };
+      request.onerror = function () {
+        reject(request.error);
+      };
+    });
+  }
+
+  async function ensureFileHandlePermission(handle, readWrite) {
+    var options = { mode: readWrite ? "readwrite" : "read" };
+    var permission;
+
+    if (typeof handle.queryPermission !== "function" || typeof handle.requestPermission !== "function") {
+      return true;
+    }
+
+    permission = await handle.queryPermission(options);
+
+    if (permission === "granted") {
+      return true;
+    }
+
+    permission = await handle.requestPermission(options);
+    return permission === "granted";
   }
 
   function bindResponsiveViewMode() {

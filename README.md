@@ -30,6 +30,7 @@ No server, build step, or internet connection is required.
 - Report preview showing total hours for each selected project.
 - CSV export that starts with total working hours by project, then lists detailed entries by day.
 - Local JSON data file storage using `timesheet-data.json`.
+- Recent data file reconnection in browsers that support persistent file handles.
 
 ## Data storage
 
@@ -38,5 +39,7 @@ Timesheet data is stored in `timesheet-data.json` on your computer, not in brows
 Modern browsers do not allow a web page to silently write to files on your computer. The app therefore tries to read `timesheet-data.json` from the app folder, then asks you to open or create the data file if needed. If you save an entry before selecting a data file, the app shows a popup and prompts you to create `timesheet-data.json`. In browsers that support direct local file writing, changes are saved back to that JSON file automatically after you connect it. If your browser does not support direct writing, the app downloads a new JSON copy.
 
 If you select a differently named JSON file, the app warns you and lets you copy/save that data as `timesheet-data.json` so the app folder keeps a consistent data file.
+
+In supported browsers, the app remembers the most recently selected data file handle so it can reconnect on the next launch. The timesheet entries themselves are still stored in `timesheet-data.json`, not in browser site cache.
 
 Keep `timesheet-data.json` in the same folder as `MyTimesheet.html` if you want all app files together.
