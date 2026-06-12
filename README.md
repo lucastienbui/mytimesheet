@@ -1,6 +1,6 @@
 # MyTimesheet Desktop
 
-A local desktop timesheet app for macOS and Windows. It automatically switches between calendar and agenda-style views based on window size, lets you enter multiple check in/check out records for each day, calculates duration automatically, tracks projects, remembers the linked data file, and generates project reports with CSV export.
+A local cross-platform desktop timesheet app. It automatically switches between calendar and agenda-style views based on window size, lets you enter multiple check in/check out records for each day, calculates duration automatically, tracks projects, remembers the linked data file, and generates project reports with CSV export
 
 ## Run locally from source
 
