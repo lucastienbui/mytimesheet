@@ -495,7 +495,8 @@ small {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-height: 46px;
   padding: 10px 12px;
@@ -503,12 +504,126 @@ small {
   border-radius: 14px;
   background: #ffffff;
   color: var(--text);
+  font: inherit;
+}
+
+.field textarea {
+  min-height: 92px;
+  resize: vertical;
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: var(--primary);
   outline: 3px solid rgba(36, 99, 235, 0.12);
+}
+
+.project-picker {
+  position: relative;
+}
+
+.project-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-picker-trigger:focus {
+  border-color: var(--primary);
+  outline: 3px solid rgba(36, 99, 235, 0.12);
+}
+
+.project-picker-caret {
+  color: var(--muted);
+}
+
+.project-picker-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
+.project-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.project-picker-row.is-selected .project-picker-name {
+  border-color: var(--primary);
+  background: rgba(36, 99, 235, 0.08);
+}
+
+.project-picker-name {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-picker-delete {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 12px;
+  background: #fff5f5;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-picker-create {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.entry-description {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.delete-project-message {
+  margin: 0 0 8px;
+  color: var(--text);
+  line-height: 1.5;
 }
 
 .field input[readonly] {

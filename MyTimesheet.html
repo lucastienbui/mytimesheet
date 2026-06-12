@@ -60,7 +60,8 @@
         <ul>
           <li>Use Auto for responsive calendar/agenda switching, or choose Calendar or Agenda manually.</li>
           <li>Calendar days show only entry count and total hours; click a day to see details.</li>
-          <li>Click a day to add several check in, check out, and project entries.</li>
+          <li>Click a day to add several check in, check out, project, and description entries.</li>
+          <li>Open the project list to delete a project and all of its related entries after confirming.</li>
           <li>Duration is calculated automatically in hours. Overnight work is supported.</li>
           <li>Use Report to see project totals for a period and export the detailed CSV.</li>
           <li>Data is stored in timesheet-data.js in this folder, not in browser site cache.</li>
@@ -107,7 +108,21 @@
 
           <label class="field">
             <span>Project</span>
-            <select id="projectSelect" required></select>
+            <div class="project-picker" id="projectPicker">
+              <button class="project-picker-trigger" id="projectPickerTrigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                <span id="projectPickerValue">General</span>
+                <span class="project-picker-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="project-picker-menu hidden" id="projectPickerMenu" role="listbox" aria-label="Projects">
+                <div id="projectPickerList"></div>
+                <button class="project-picker-create" id="createProjectOption" type="button">+ Create new project</button>
+              </div>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Description</span>
+            <textarea id="descriptionInput" rows="3" maxlength="500" placeholder="What did you work on?"></textarea>
           </label>
 
           <label class="field hidden" id="newProjectField">
@@ -173,6 +188,23 @@
           <button class="primary-button" type="submit">Export CSV</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="modal" id="deleteProjectDialog">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Delete project</p>
+            <h2>Delete this project?</h2>
+          </div>
+          <button class="ghost-button" id="closeDeleteProjectButton" type="button" aria-label="Close delete project dialog">&times;</button>
+        </div>
+        <p id="deleteProjectMessage" class="delete-project-message"></p>
+        <div class="modal-actions">
+          <button class="secondary-button" id="cancelDeleteProjectButton" type="button">Cancel</button>
+          <button class="danger-button" id="confirmDeleteProjectButton" type="button">Delete project</button>
+        </div>
+      </div>
     </dialog>
 
     <script src="timesheet-data.js"></script>
