@@ -1,16 +1,22 @@
-# Local Timesheet Calendar
+# MyTimesheet Desktop
 
-A small HTML5 timesheet app that runs locally on macOS, Windows, and Linux. It automatically switches between calendar and agenda-style views based on window size, lets you enter multiple check in/check out records for each day, calculates duration automatically, tracks projects, saves data to a local JavaScript data file, and generates project reports with CSV export.
+A local desktop timesheet app for macOS and Windows. It automatically switches between calendar and agenda-style views based on window size, lets you enter multiple check in/check out records for each day, calculates duration automatically, tracks projects, remembers the linked data file, and generates project reports with CSV export.
 
-## Run locally
+## Run locally from source
 
 1. Download or clone this repository to your computer.
-2. Double-click `MyTimesheet.html` to open it in your web browser.
-3. The app loads `timesheet-data.js` from the same folder automatically.
-4. Save an entry. When prompted, save/choose `timesheet-data.js`; future changes in that browser session will save to that file automatically. You can also click **Export data** to write/download an updated `timesheet-data.js`.
+2. Install dependencies with `npm install`.
+3. Start the desktop app with `npm start`.
+4. Use **Open data file** to select an existing data file, or **Create data file** to create one.
 5. Start entering timesheet records by clicking days on the calendar or agenda.
 
-No server, build step, or internet connection is required.
+## Build desktop installers
+
+- Build Windows artifacts: `npm run dist:win`
+- Build macOS artifacts: `npm run dist:mac`
+- Build unpacked app for the current platform: `npm run pack`
+
+Build outputs are written to `dist/`.
 
 ## Features
 
@@ -29,14 +35,25 @@ No server, build step, or internet connection is required.
   - One project, several projects, or all projects.
 - Report preview showing total hours for each selected project.
 - CSV export that starts with total working hours by project, then lists detailed entries by day.
-- Local JavaScript data file storage using `timesheet-data.js`.
+- Local JavaScript data file storage using a `.js` data file.
+- Desktop data file actions: **Open data file**, **Create data file**, and **Export data**.
+- The app remembers the linked data file path and reopens it on the next launch.
 
 ## Data storage
 
-Timesheet data is stored in `timesheet-data.js` on your computer, not in browser site cache.
+Timesheet data is stored in the data file you open or create on your computer, not in browser site cache.
 
-Modern browsers do not allow a web page to silently write to files on your computer without permission. The app loads the local `timesheet-data.js` file automatically. On the first entry save, browsers that support the File System Access API prompt you to save/choose `timesheet-data.js`; after permission is granted, later changes in that session save automatically. If your browser does not support that API, use **Export data** to download an updated `timesheet-data.js`.
+The desktop app uses native file access, so after a data file is opened or created, entry changes save directly to that file. The linked data file path is remembered in the app's desktop settings so it can be reopened automatically next time.
 
-If you have an old data file, export it first and copy its data into the local `timesheet-data.js` file in this folder before using this version.
+Use **Export data** when you want to save a copy to another location.
 
-Keep `timesheet-data.js` in the same folder as `MyTimesheet.html`.
+Data files use this JavaScript format:
+
+```js
+window.MY_TIMESHEET_DATA = {
+  "version": 1,
+  "updatedAt": null,
+  "entries": {},
+  "projects": ["General"]
+};
+```

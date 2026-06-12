@@ -1,0 +1,48 @@
+{
+  "name": "my-timesheet",
+  "version": "1.0.0",
+  "description": "Local desktop timesheet app for macOS and Windows.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.mytimesheet.app",
+    "productName": "MyTimesheet",
+    "files": [
+      "MyTimesheet.html",
+      "app.js",
+      "styles.css",
+      "timesheet-data.js",
+      "main.js",
+      "preload.js",
+      "README.md",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2"
+  }
+}
